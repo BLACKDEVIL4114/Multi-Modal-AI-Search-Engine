@@ -1,0 +1,7 @@
+torch==2.2.1
+transformers==4.38.2
+faiss-cpu==1.8.0
+streamlit==1.32.2
+Pillow==10.2.0
+numpy==1.26.4
+kagglehub==0.2.2
