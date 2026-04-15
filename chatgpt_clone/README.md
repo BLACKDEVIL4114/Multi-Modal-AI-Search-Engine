@@ -17,9 +17,9 @@ A lightweight ChatGPT-style application built with Streamlit and the Groq API.
    ```
 
 2. **API Key**:
-   - Rename `.env.example` to `.env` (if applicable) or edit the `.env` file.
-   - Add your Groq API key: `GROQ_API_KEY=gsk_...`
-   - *Alternatively, you can paste the key directly into the sidebar of the app.*
+   - Create a `.env` file in the root directory.
+   - Add your individual keys: `GROQ_API_KEY=your_key_here`
+   - Ensure the `.env` file is listed in your `.gitignore` to prevent exposure.
 
 3. **Run the Application**:
    ```bash
