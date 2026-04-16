@@ -1,7 +1,10 @@
-streamlit==1.32.2
-groq>=1.1.2
-python-dotenv==1.0.1
-PyPDF2==3.0.1
-python-docx==1.1.0
-faiss-cpu==1.8.0
-sentence-transformers==2.5.1
+python-docx==0.8.11
+beautifulsoup4==4.12.3
+requests==2.31.0
+python-dotenv
+lxml
+groq
+PyPDF2
+sentence-transformers
+faiss-cpu
+streamlit

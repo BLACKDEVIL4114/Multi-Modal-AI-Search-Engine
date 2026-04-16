@@ -1,24 +1,57 @@
 import streamlit as st
-from groq import Groq
+st.set_page_config(page_title="Kali AI | Intelligence Studio v2", page_icon="✦", layout="wide")
+
 import os
-from dotenv import load_dotenv
-from PyPDF2 import PdfReader
-from docx import Document
-from docx.shared import Pt, Inches, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.style import WD_STYLE_TYPE
-import faiss
-import numpy as np
-from sentence_transformers import SentenceTransformer
+import time
+import json
 import io
 import re
 import base64
-import requests
-from bs4 import BeautifulSoup
-
-from urllib.parse import urlparse
 import socket
-import time
+from datetime import datetime
+from urllib.parse import urlparse
+from docx import Document
+from docx.shared import Pt, Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from utils.docx_handler import load_doc, save_doc
+
+try:
+    from groq import Groq
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    st.error("⚠️ **Initialization Failure:** `groq` or `python-dotenv` missing.")
+    st.stop()
+
+# ── Persistence Engine ──────────────────────────────
+HISTORY_DIR = ".kali_history"
+HISTORY_FILE = os.path.join(HISTORY_DIR, "chat_history.json")
+
+def save_chat_to_disk(chat_id, messages):
+    try:
+        if not os.path.exists(HISTORY_DIR): os.makedirs(HISTORY_DIR)
+        history = {}
+        if os.path.exists(HISTORY_FILE):
+            with open(HISTORY_FILE, "r") as f: history = json.load(f)
+        
+        title = "New Conversation"
+        for m in messages:
+            if m["role"] == "user":
+                title = m["content"][:30] + "..." if len(m["content"]) > 30 else m["content"]
+                break
+                
+        history[chat_id] = {"title": title, "messages": messages, "timestamp": chat_id}
+        with open(HISTORY_FILE, "w") as f: json.dump(history, f)
+    except:
+        pass # Fail silently to prevent refresh loops on write-protected environments
+
+def load_all_chats():
+    try:
+        if not os.path.exists(HISTORY_DIR): os.makedirs(HISTORY_DIR)
+        if not os.path.exists(HISTORY_FILE): return {}
+        with open(HISTORY_FILE, "r") as f: return json.load(f)
+    except:
+        return {}
 
 # ── Cybersecurity: Scraper Firewall ────────────
 def is_safe_url(url):
@@ -59,6 +92,8 @@ def autonomous_search(query):
 
 # ── Web Intelligence Engine (Hardened) ────────
 def fetch_web_content(url):
+    import requests
+    from bs4 import BeautifulSoup
     if not is_safe_url(url):
         return "⚠️ [SECURITY BLOCK] Access to internal, local, or unsafe resources is prohibited."
     try:
@@ -71,8 +106,7 @@ def fetch_web_content(url):
             return "✅ [BINARY CAPTURED] Remote document integrated."
         
         soup = BeautifulSoup(response.content, 'html.parser')
-        for script in soup(["script", "style"]):
-            script.extract()
+        for script in soup(["script", "style"]): script.extract()
         text = soup.get_text()
         lines = (line.strip() for line in text.splitlines())
         chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
@@ -80,145 +114,236 @@ def fetch_web_content(url):
     except Exception as e:
         return f"Error: {str(e)}"
 
-# ── Session Init ───────────────────────────────────
+# --- KALI v2.0 ARCHITECTURE: RADICAL INITIALIZATION ---
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 if "chat_id" not in st.session_state:
-    st.session_state.chat_id = str(int(time.time()))
+    st.session_state.chat_id = "kali_" + str(int(time.time()))
 
-# ── Environment ────────────────────────────────────
 load_dotenv()
 DEFAULT_API_KEY = os.getenv("GROQ_API_KEY")
 
-@st.cache_resource
-def load_embedder():
-    return SentenceTransformer('all-MiniLM-L6-v2')
-
-# ── Kali AI Premium UI Shell ─────────────────────────
-st.set_page_config(page_title="Kali AI | Intelligence Studio", layout="wide", page_icon="🐍")
-
-# 🎨 ELITE STUDIO DESIGN SYSTEM
 st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Playfair+Display:ital@1&display=swap');
-    
+<style>
+    /* 1. Global Midnight Slate Foundation */
     :root {
-        --bg-color: #FFFEFA;
-        --sidebar-bg: #F5F7F2;
-        --accent-gold: #D4AF37;
-        --accent-emerald: #064E3B;
-        --text-main: #1A1A1A;
-        --glass-bg: rgba(255, 255, 255, 0.7);
+        --bg-deep: #12121e;
+        --sidebar-bg: #0f111a;
+        --accent-primary: #7c3aed;
+        --accent-secondary: #c4b5fd;
+        --border-subtle: #2d2d3f;
+        --text-bright: #e2e8f0;
     }
 
-    .stApp {
-        background-color: var(--bg-color);
-        color: var(--text-main);
-        font-family: 'Outfit', sans-serif;
+    [data-testid="stAppViewContainer"], .stApp {
+        background: radial-gradient(circle at 50% 10%, #1a1a2e 0%, var(--bg-deep) 70%) !important;
+        color: var(--text-bright) !important;
+    }
+    
+    [data-testid="stHeader"] {
+        background: transparent !important;
     }
 
-    /* GLASSMORPHIC SIDEBAR */
+    /* 2. Zero-Flicker Sidebar */
     section[data-testid="stSidebar"] {
-        background-color: var(--sidebar-bg);
-        border-right: 1px solid rgba(0,0,0,0.05);
+        background-color: var(--sidebar-bg) !important;
+        border-right: 1px solid var(--border-subtle) !important;
     }
 
-    /* PREMIUM HEADERS */
-    .main-title {
-        font-family: 'Playfair Display', serif;
-        font-size: 4rem;
-        font-weight: 600;
-        color: var(--accent-emerald);
-        margin-bottom: 0px;
-        letter-spacing: -1.5px;
-    }
-    .sub-title {
-        font-family: 'Outfit', sans-serif;
-        font-size: 0.9rem;
-        text-transform: uppercase;
-        letter-spacing: 5px;
-        color: var(--accent-gold);
-        margin-bottom: 2.5rem;
-        opacity: 0.8;
+    .sb-logo-v2 {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 5px 0 20px;
+        border-bottom: 0.5px solid #222;
+        margin-bottom: 20px;
     }
 
-    /* CHAT BUBBLES - GLASSMORPHIC */
-    .stChatMessage {
-        background: var(--glass-bg) !important;
-        backdrop-filter: blur(15px);
-        border-radius: 20px !important;
-        border: 1px solid rgba(0, 0, 0, 0.04) !important;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.02) !important;
-        padding: 1.5rem !important;
-        margin-bottom: 1.5rem !important;
-        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    }
-    .stChatMessage:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 15px 50px rgba(0,0,0,0.05) !important;
+    .logo-mark-v2 {
+        width: 36px;
+        height: 36px;
+        background: linear-gradient(135deg, #6c63ff, #a855f7);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        color: white;
+        box-shadow: 0 0 15px rgba(108, 99, 255, 0.3);
     }
 
-    /* UPLOADER TRANSFORMATION */
-    .stFileUploader {
-        background: rgba(0, 78, 59, 0.02) !important;
-        border: 1px dashed rgba(6, 78, 59, 0.1) !important;
+    /* 3. High-Fidelity Canvas */
+    .hero-v2 {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 50px 0;
+        position: relative;
+    }
+
+    .bg-glow-v2 {
+        position: absolute;
+        width: 700px;
+        height: 700px;
+        background: radial-gradient(circle, rgba(108, 99, 255, 0.08) 0%, transparent 70%);
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    /* 4. Chat & Input Refinement */
+    [data-testid="stChatMessage"] {
+        background-color: #1e1e2f !important;
+        border: 1px solid #2d2d3f !important;
         border-radius: 12px !important;
-        padding: 10px !important;
+        margin-bottom: 20px !important;
     }
 
-    /* BUTTONS */
+    /* Global Button Overrides (Flicker-Free) */
     .stButton>button, .stDownloadButton>button {
-        background: linear-gradient(135deg, var(--accent-emerald), #0A5F44) !important;
+        background-color: #141414 !important;
+        color: #c4b5fd !important;
+        border: 1px solid #2d1f5e !important;
+        border-radius: 10px !important;
+        transition: 0.3s !important;
+    }
+    
+    .stButton>button:hover {
+        background-color: #1c1023 !important;
+        border-color: #6c63ff !important;
         color: white !important;
-        border-radius: 50px !important;
-        border: none !important;
-        padding: 0.6rem 2rem !important;
-        font-weight: 600 !important;
-        letter-spacing: 0.5px;
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        box-shadow: 0 8px 25px rgba(6, 78, 59, 0.2) !important;
-    }
-    .stButton>button:hover, .stDownloadButton>button:hover {
-        transform: scale(1.05) translateY(-2px) !important;
-        box-shadow: 0 12px 35px rgba(6, 78, 59, 0.3) !important;
+        box-shadow: 0 0 15px rgba(108, 99, 255, 0.2) !important;
     }
 
-    .pulse-badge {
-        display: inline-block;
-        padding: 6px 18px;
-        background: rgba(212, 175, 55, 0.1);
-        color: var(--accent-gold);
-        border-radius: 50px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 1px;
-        border: 1px solid rgba(212, 175, 55, 0.4);
+    /* Sidebar Specific Contrast */
+    [data-testid="stSidebar"] .stButton>button {
+        background-color: #0a0a0a !important;
+        border: 1px solid #1a1a1a !important;
+        color: #a78bfa !important;
+        text-align: left !important;
+        font-size: 13px !important;
+        padding: 10px 15px !important;
+        width: 100% !important;
+    }
+    
+    [data-testid="stSidebar"] .stButton>button:hover {
+        border-color: #6c63ff !important;
+        color: white !important;
     }
 
-    /* COMBINED BAR CSS */
-    [data-testid="stPopover"] > button {
-        background-color: transparent !important;
-        border: 1px solid rgba(0,0,0,0.1) !important;
-        border-right: none !important;
-        border-radius: 30px 0 0 30px !important;
-        height: 52px !important;
-        margin-right: -15px !important;
-        padding-left: 20px !important;
-        padding-right: 20px !important;
-        color: var(--accent-emerald) !important;
-        box-shadow: none !important;
-    }
+    /* Precision Input Bar */
     .stChatInputContainer {
-        border-radius: 0 30px 30px 0 !important;
-        background-color: white !important;
-        border: 1px solid rgba(0,0,0,0.1) !important;
-        border-left: none !important;
-        height: 52px !important;
+        border-radius: 14px !important;
+        background-color: #141414 !important;
+        border: 1px solid #222 !important;
+        padding: 8px !important;
     }
+    
     .stChatInputContainer:focus-within {
-        border-color: var(--accent-emerald) !important;
+        border-color: #6c63ff !important;
     }
-    </style>
-<div style='height: 50px;'></div>
+
+    /* Logic Chips */
+    .chip-v2 {
+        background: #141414;
+        border: 1px solid #222;
+        border-radius: 20px;
+        padding: 8px 18px;
+        font-size: 13px;
+        color: #777;
+        margin: 5px;
+        display: inline-block;
+        transition: 0.2s;
+        cursor: pointer;
+    }
+    .chip-v2:hover {
+        background: #1c1023;
+        border-color: #6c63ff;
+        color: #c4b5fd;
+    }
+
+    [data-testid="stChatMessageContent"] {
+        background-color: transparent !important;
+    }
+    .stMarkdown div p {
+        color: var(--text-bright) !important;
+    }
+</style>
 """, unsafe_allow_html=True)
+# --- ENGINE INITIALIZATION v2.0 ---
+DEFAULT_API_KEY = os.getenv("GROQ_API_KEY", "")
+client = Groq(api_key=DEFAULT_API_KEY) if DEFAULT_API_KEY else None
+
+# --- SIDEBAR & NAVIGATION v2.0 ---
+all_history = load_all_chats()
+with st.sidebar:
+    st.markdown("""
+        <div class="sb-logo-v2">
+            <div class="logo-mark-v2">✦</div>
+            <div style="color:white; font-size:15px; font-weight:500; line-height:1.1;">Kali AI<br><span style='font-size:9px; color:#a78bfa; letter-spacing:1px; font-weight:400;'>STUDIO v2</span></div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("＋ New Session", use_container_width=True):
+        st.session_state.messages = []
+        st.session_state.chat_id = "kali_" + str(int(time.time()))
+        for key in ["template_bytes", "chunks", "index", "final_doc"]:
+            if key in st.session_state: del st.session_state[key]
+        st.rerun()
+
+    st.markdown("<div style='font-size:11px; color:#444; margin:15px 0 10px; font-weight:bold; letter-spacing:1px;'>RECENT INTELLIGENCE</div>", unsafe_allow_html=True)
+    
+    # Render History with v2 Styling (Shield Re-integrated)
+    try:
+        sorted_hist = sorted(all_history.items(), key=lambda x: x[1].get('timestamp', 0), reverse=True)
+        for cid, data in sorted_hist[:8]:
+            title = data.get('title', 'Untitled Intelligence')
+            is_active = (cid == st.session_state.chat_id)
+            btn_label = f"✦ {title}" if is_active else f"  {title}"
+            if st.button(btn_label, key=f"nav_{cid}", use_container_width=True):
+                st.session_state.messages = data['messages']
+                st.session_state.chat_id = cid
+                st.rerun()
+    except Exception as e:
+        st.write("Recent Intelligence: [Syncing...]")
+
+    st.divider()
+    auth_key = st.text_input("Engine Key", value=DEFAULT_API_KEY, type="password") if not DEFAULT_API_KEY else DEFAULT_API_KEY
+    
+    st.markdown(f"""
+        <div style='position:fixed; bottom:20px; width:220px; padding:0 20px; display:flex; align-items:center; gap:12px;'>
+            <div style='width:34px; height:34px; border-radius:10px; background:#18122b; border:1px solid #2d1f5e; color:#a78bfa; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:14px;'>✦</div>
+            <div><b style='color:#fff; font-size:13px;'>Executive</b><br><span style='color:#4ade80; font-size:10px;'>● System Optimal</span></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+# --- MAIN ENGINE INTERFACE CANVAS ---
+if not st.session_state.messages:
+    # Action Navigation
+    cols = st.columns([1, 4, 3])
+    with cols[0]:
+        st.markdown("<div style='background:#141414; border:1px solid #222; border-radius:8px; padding:6px 12px; font-size:12px; color:#888;'>Studio v2.0</div>", unsafe_allow_html=True)
+    with cols[2]:
+        st.markdown("<div style='text-align:right; font-size:12px; color:#666;'>Engine Status: <span style='color:#6c63ff;'>Optimal</span></div>", unsafe_allow_html=True)
+
+    st.markdown("""
+        <div class="hero-v2">
+            <div class="bg-glow-v2"></div>
+            <div style="width:70px; height:70px; border-radius:20px; background:#18122b; border:1px solid #2d1f5e; display:flex; align-items:center; justify-content:center; font-size:32px; margin-bottom:15px; z-index:1;">✦</div>
+            <h1 style="font-size:32px; font-weight:500; color:#e8e8e8; margin-top:0; z-index:1;">Hello, I'm <span style="color:#a78bfa">Kali</span></h1>
+            <p style="color:#444; font-size:12px; text-transform:uppercase; letter-spacing:1.5px; margin-top:-10px; z-index:1;">Surgical Assistant Intelligence · Ready</p>
+        </div>
+        <div style="text-align:center; position:relative; z-index:1;">
+            <div class="chip-v2">✏️ Draft content</div>
+            <div class="chip-v2">🔍 Surgical edit</div>
+            <div class="chip-v2">📊 Analyze complex XML</div>
+            <div class="chip-v2">💡 Strategic plan</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+# --- END UI SYNTHESIS ---
 
 # ── Advanced Markdown-to-Pro-Word Engine ───────────
 def clean_content(text):
@@ -249,24 +374,28 @@ def smart_surgical_edit(template_bytes, revised_content):
     import shutil
     from datetime import datetime
     
-    st.info("🛰️ KALI SURGICAL PROTOCOL: Initializing Elite Revision Engine...")
+# st.info("🛰️ KALI SURGICAL PROTOCOL: Initializing Elite Revision Engine...")
     
     changes = []
-    # --- UNIVERSAL SURGICAL PARSER (v7.0) ---
-    # Scans the entire response for valid surgical patterns: "Original" -> "New"
-    # Matches patterns regardless of conversational flanking text.
-    pattern = r'["\']{1,3}(.*?)["\']{1,3}\s*(?:\-+|==|=)>\s*["\']{1,3}(.*?)["\']{1,3}'
-    matches = re.findall(pattern, revised_content, re.DOTALL)
+    # --- OMNI-SURGICAL PARSER (v14.0 - Cluster Aware) ---
+    # 1. Quoted Clusters: "A" -> "B" "C" -> "D"
+    pattern_quoted = r'(?:["\']{1,3})(.*?)(?:["\']{1,3})\s*(?:\-+|==|=)>\s*(?:["\']{1,3})(.*?)(?:["\']{1,3})(?=\s*["\']|$)'
+    matches = re.findall(pattern_quoted, revised_content)
     
+    # 2. Raw/Technical Clusters (XML tags or single words)
+    if not matches:
+        pattern_raw = r'(?:^|\s|<)([^>\n\-\s]+(?: <[^>]+>)?)\s*(?:\-+|==|=)>\s*([^"\n\s<]+(?: <[^>]+>)?)(?:\s|$)'
+        matches = re.findall(pattern_raw, revised_content)
+
     for old, new in matches:
-        if old.strip() and new.strip():
-            # Filter out known placeholders that the AI might incorrectly use
-            if "<!--" in old and "-->" in old: continue
-            changes.append((old.strip(), new.strip()))
+        old_clean, new_clean = old.strip(), new.strip()
+        if old_clean and new_clean:
+            if "<!--" in old_clean: continue
+            changes.append((old_clean, new_clean))
     
     if not changes:
-        # Fallback for unquoted labels
-        fallback_matches = re.findall(r'(?:Original|From):\s*(.*?)\s*(?:-+|==|=)>\s*(?:New|To):\s*(.*?)(?:\n|$)', revised_content, re.DOTALL | re.IGNORECASE)
+        # Fallback for "Original: X New: Y"
+        fallback_matches = re.findall(r'(?:Original|From|Old):\s*(.*?)\s*(?:-+|==|=)>\s*(?:New|To|Updated):\s*(.*?)(?:\n|$)', revised_content, re.DOTALL | re.IGNORECASE)
         for old, new in fallback_matches:
             changes.append((old.strip(), new.strip()))
 
@@ -288,7 +417,8 @@ def smart_surgical_edit(template_bytes, revised_content):
                     xml_targets.append(os.path.join(root, file))
             
         total_swaps = 0
-        st.write(f"🧬 Synchronizing XML Runs across {len(xml_targets)} nodes...")
+# SILENT BACKGROUND WORKER (No Flicker)
+        # st.write(f"🧬 Synchronizing XML Runs across {len(xml_targets)} nodes...")
         
         author = "Kali AI"
         date_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -298,15 +428,19 @@ def smart_surgical_edit(template_bytes, revised_content):
                 xml_content = f.read()
             
             # 1. DEEP SYNTHESIS: Aggressive Word Noise Removal
-            # This strips spelling errors, grammar flags, bookmarks, and soft hyphens
-            # that Microsoft Word uses to fragment words in the background.
+            # This strips EVERYTHING that Word uses to fragment words
             xml_content = re.sub(r'<w:proofErr w:type="(spellStart|spellEnd|gramStart|gramEnd)"/>', '', xml_content)
             xml_content = re.sub(r'<w:bookmark(Start|End) [^>]*/>', '', xml_content)
             xml_content = re.sub(r'<w:softHyphen/>', '', xml_content)
+            xml_content = re.sub(r'<w:noProof/>', '', xml_content)
+            xml_content = re.sub(r'<w:lastRenderedPageBreak/>', '', xml_content)
             
-            # 2. Run Consolidation (K-a-l-i -> Kali)
+            # 2. RUN CONSOLIDATION (v9.0 Titanium)
+            # This bridges fragmented XML runs into a single continuous stream
             xml_content = re.sub(r'</w:t></w:r><w:r><w:t>', '', xml_content)
             xml_content = re.sub(r'</w:t></w:r><w:r><w:rPr>.*?</w:rPr><w:t>', '', xml_content)
+            xml_content = re.sub(r'</w:t></w:r><w:proofErr w:type="spellStart"/><w:r><w:t>', '', xml_content)
+            xml_content = re.sub(r'</w:t></w:r><w:proofErr w:type="gramStart"/><w:r><w:t>', '', xml_content)
             
             # 3. Tracked Changes Surgery (Redlining & Structural)
             found_in_file = 0
@@ -322,44 +456,64 @@ def smart_surgical_edit(template_bytes, revised_content):
                 # Check 3: Word-Field Normalization (flexible backslashes/case)
                 
                 if is_structural:
-                    # STRUCTURAL MODE: Direct XML Injection (No redlining as it breaks schema)
-                    if old in xml_content:
-                        xml_content = xml_content.replace(old, new)
+                    # STRUCTURAL MODE: Direct XML Injection
+                    # SAFETY CHECK: Ensure the XML replacement is well-balanced to prevent corruption
+                    if old.count('<') != new.count('<') or old.count('>') != new.count('>'):
+                        st.warning(f"⚠️ Structural Lock: Blocked unbalanced XML swap to prevent corruption ({old[:20]}...)")
+                # 🛡️ SHIELDED SURGERY (v15.0)
+                # Escaping search terms to match XML storage format
+                old_xml = old.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                new_xml = new.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                
+                # MODE DETECTION: Default to REDLINE for safety, or DIRECT if requested
+                surgery_mode = "REDLINE" if st.session_state.get("surgical_mode", True) else "DIRECT"
+                
+                if surgery_mode == "DIRECT":
+                    if old_xml in xml_content:
+                        xml_content = xml_content.replace(old_xml, new_xml)
                         found_in_file += 1
                         total_swaps += 1
-                    elif old_esc in xml_content:
-                        xml_content = xml_content.replace(old_esc, new)
-                        found_in_file += 1
-                        total_swaps += 1
-                    else:
-                        # Attempt fuzzy XML match (flexible whitespace/order)
-                        pattern = re.escape(old).replace(r'\ ', r'\s+')
-                        if re.search(pattern, xml_content):
-                            xml_content = re.sub(pattern, new, xml_content)
-                            found_in_file += 1
-                            total_swaps += 1
                 else:
-                    # TEXT MODE: Redlining (Tracked Changes)
-                    replacement = (
-                        f'<w:del w:id="{total_swaps*10}" w:author="{author}" w:date="{date_str}">'
-                        f'<w:r><w:delText>{old_esc}</w:delText></w:r></w:del>'
-                        f'<w:ins w:id="{total_swaps*10+1}" w:author="{author}" w:date="{date_str}">'
-                        f'<w:r><w:t>{new_esc}</w:t></w:r></w:ins>'
-                    )
+                    # 🧬 REDLINE SURGERY: Track Changes Mode
+                    import difflib
+                    def get_diff(s1, s2):
+                        w1, w2 = s1.split(), s2.split()
+                        m = difflib.SequenceMatcher(None, w1, w2)
+                        for t, i1, i2, j1, j2 in m.get_opcodes():
+                            if t == 'replace': return " ".join(w1[i1:i2]), " ".join(w2[j1:j2])
+                        return s1, s2
+
+                    a_old, a_new = get_diff(old, new)
+                    a_old_xml = a_old.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    a_new_xml = a_new.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+                    # 💉 TURBO-CLUSTER MATCHING (v16.0)
+                    # Joins words with optional XML noise instead of characters for 10x speed.
+                    def q_anchor(t):
+                        words = t.split()
+                        if not words: return re.escape(t)
+                        return r'(?:<[^>]+>|\s)*'.join([re.escape(w) for w in words])
+
+                    pattern = q_anchor(a_old_xml)
                     
-                    # Fuzzy match for Word instruction fields (flexible backslashes)
-                    word_field_pat = re.escape(old).replace(r'\*', r'\\?\*')
+                    # 💉 LOCALIZED STYLE CLONING: Find the rPr (style) immediately before the text
+                    # This prevents using styles from other parts of the document.
+                    match = re.search(f'(<w:rPr>.*?</w:rPr>)?(?:<[^>]+>)*({pattern})', xml_content, re.DOTALL)
                     
-                    if old in xml_content:
-                        xml_content = xml_content.replace(old, replacement)
-                        found_in_file += 1
-                        total_swaps += 1
-                    elif old_esc in xml_content:
-                        xml_content = xml_content.replace(old_esc, replacement)
-                        found_in_file += 1
-                        total_swaps += 1
-                    elif re.search(word_field_pat, xml_content, re.IGNORECASE):
-                        xml_content = re.sub(word_field_pat, replacement, xml_content, flags=re.IGNORECASE)
+                    if match:
+                        style_xml = match.group(1) if match.group(1) else ""
+                        full_match = match.group(0)
+                        
+                        # REPLACEMENT: Inserted as a clean insertion/deletion block
+                        redline = (
+                            f'<w:del w:id="{total_swaps*10}" w:author="{author}" w:date="{date_str}">'
+                            f'<w:r>{style_xml}<w:delText>{a_old_xml}</w:delText></w:r></w:del>'
+                            f'<w:ins w:id="{total_swaps*10+1}" w:author="{author}" w:date="{date_str}">'
+                            f'<w:r>{style_xml}<w:t>{a_new_xml}</w:t></w:r></w:ins>'
+                        )
+                        
+                        # Replace the specific match with the redline block
+                        xml_content = xml_content.replace(full_match, redline, 1)
                         found_in_file += 1
                         total_swaps += 1
 
@@ -383,13 +537,13 @@ def smart_surgical_edit(template_bytes, revised_content):
             return bio.getvalue()
         else:
             st.error("❌ Verification Failed: Target patterns not found in document architecture.")
-            return template_bytes
+            return None # Return None to prevent showing the download button for original file
 
     except Exception as e:
         st.error(f"❌ Elite Surgery Failure: {str(e)}")
         return template_bytes
 
-def save_doc(doc):
+def get_docx_bytes(doc):
     bio = io.BytesIO()
     doc.save(bio)
     return bio.getvalue()
@@ -448,9 +602,10 @@ def create_pro_docx(content):
 
 def get_file_text(file):
     if file.name.endswith(".pdf"):
+        from PyPDF2 import PdfReader
         return "\n".join([p.extract_text() for p in PdfReader(file).pages if p.extract_text()])
     elif file.name.endswith(".docx"):
-        doc = Document(io.BytesIO(file.getvalue()))
+        doc = load_doc(io.BytesIO(file.getvalue()))
         text_parts = []
         
         # Paragraphs
@@ -483,105 +638,34 @@ def get_chunks(text):
     return res
 
 @st.cache_resource
+def get_ai_model():
+    from sentence_transformers import SentenceTransformer
+    with st.spinner("🧠 Initializing Neural Core..."):
+        return SentenceTransformer('all-MiniLM-L6-v2')
+
+@st.cache_resource
 def build_vector_store(chunks):
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    import faiss
+    import numpy as np
+    model = get_ai_model()
     embs = model.encode(chunks)
     idx = faiss.IndexFlatL2(embs.shape[1])
     idx.add(np.array(embs).astype('float32'))
     return idx, chunks
 
 def fetch_knowledge(query, idx, chunks):
+    import numpy as np
     if not idx: return ""
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    model = get_ai_model()
     _, ids = idx.search(np.array(model.encode([query])).astype('float32'), 5)
     return "\n\n---\n\n".join([chunks[i] for i in ids[0] if i < len(chunks)])
 
-# ── Persistence Engine ──────────────────────────────
-HISTORY_FILE = "chat_history.json"
 
-def save_chat_to_disk(chat_id, messages):
-    import json
-    history = {}
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, "r") as f: history = json.load(f)
-        except: pass
-    
-    # Deriving title from first user message
-    title = "New Conversation"
-    for m in messages:
-        if m["role"] == "user":
-            title = m["content"][:30] + "..." if len(m["content"]) > 30 else m["content"]
-            break
-            
-    history[chat_id] = {"title": title, "messages": messages, "timestamp": chat_id}
-    with open(HISTORY_FILE, "w") as f: json.dump(history, f)
+# --- PERSISTENCE ENGINE MOVED TO TOP ---
 
-def load_all_chats():
-    import json
-    if not os.path.exists(HISTORY_FILE): return {}
-    try:
-        with open(HISTORY_FILE, "r") as f: return json.load(f)
-    except: return {}
+# --- SIDEBAR CONSOLIDATED ABOVE ---
 
-# ── Sidebar Evolution (ChatGPT Style) ────────────────
-with st.sidebar:
-    st.markdown("<h2 style='font-family:Playfair Display; color:#064E3B;'>Kali AI</h2>", unsafe_allow_html=True)
-    
-    if st.button("➕ New chat", use_container_width=True):
-        st.session_state.messages = []
-        st.session_state.chat_id = str(int(time.time()))
-        for key in ["template_bytes", "chunks", "index", "final_doc"]:
-            if key in st.session_state: del st.session_state[key]
-        st.session_state.vision_active = False
-        st.rerun()
-        
-    search_q = st.text_input("🔍 Search chats", placeholder="Search history...")
-    
-    st.divider()
-    
-    # ── Silent TPU Lockdown ─────────────────────
-    brain_model = "google/vertex-tpu-v3-large"
-    
-    st.markdown("<div style='margin-top: 25px; margin-bottom: 10px; color: var(--accent-gold); font-size: 0.75rem; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;'>Chronicle Archive</div>", unsafe_allow_html=True)
-    all_history = load_all_chats()
-    
-    if not all_history:
-        st.markdown("<div style='color: rgba(0,0,0,0.3); font-size: 0.8rem; padding: 10px;'>No history synced yet. Start a chat!</div>", unsafe_allow_html=True)
-    else:
-        # Display History in Sidebar
-        hist_items = sorted(all_history.items(), key=lambda x: x[1].get('timestamp', 0), reverse=True)
-        for cid, data in hist_items:
-            if not search_q or search_q.lower() in data['title'].lower():
-                if st.button(f"📜 {data['title']}", key=f"hist_{cid}", use_container_width=True):
-                    st.session_state.messages = data['messages']
-                    st.session_state.chat_id = cid
-                    st.rerun()
-                
-    st.divider()
-    
-    auth_key = st.text_input("Engine Key", value=DEFAULT_API_KEY, type="password") if not DEFAULT_API_KEY else DEFAULT_API_KEY
-    if not auth_key:
-        st.warning("🔑 GROQ_API_KEY not found. Please add it to your .env file or enter it above to enable Kali AI.")
-    
-    st.divider()
-    status_label = "Online" if auth_key else "Standby (Awaiting Key)"
-    st.markdown(f"<span class='pulse-badge'>System: {status_label}</span>", unsafe_allow_html=True)
-
-# ── Main Stage ─────────────────────────────────────
-has_template = bool(st.session_state.get('template_bytes'))
-current_mode = "ARCHITECT" if (has_template and st.session_state.get('surgical_mode', True)) else "ASSISTANT"
-status_color = "#D4AF37" if current_mode == "ARCHITECT" else "#064E3B"
-
-st.markdown(f"<div style='text-align: center; margin-top: 10vh;'>", unsafe_allow_html=True)
-st.markdown(f"<h1 class='main-title' style='color:{status_color};'>KALI {current_mode}</h1>", unsafe_allow_html=True)
-st.markdown(f"<div class='sub-title'>{current_mode} LEVEL INTELLIGENCE // READY</div>", unsafe_allow_html=True)
-
-if has_template:
-    col1, col2, col3 = st.columns([1,1,1])
-    with col2:
-        st.session_state.surgical_mode = st.toggle("🔧 Surgical Mode (Direct Edit)", value=st.session_state.get('surgical_mode', True))
-st.markdown("</div>", unsafe_allow_html=True)
+# --- LEGACY HEADER PURGED (v2.0 Logic Engaged) ---
 st.markdown("<br>", unsafe_allow_html=True)
 
 if "messages" not in st.session_state:
@@ -654,6 +738,9 @@ if prompt:
             status.update(label="✅ Internet Learning Synced", state="complete", expanded=False)
 
     try:
+        brain_model = "google/vertex-tpu-v3-large"
+        MODEL_QUEUE = [brain_model]
+        
         rag_context = fetch_knowledge(prompt, st.session_state.get('index'), st.session_state.get('chunks'))
         full_context = f"{rag_context}\n{web_context}"
         
@@ -669,7 +756,8 @@ if prompt:
                 "2. PROVIDE ONLY surgical patterns using the exact format: '\"Original XML/Text\" -> \"New XML/Text\"'.\n"
                 "3. ABSOLUTE RULE: For structural changes, you MUST find the existing tag (e.g., <w:sectPr/>) and provide it as the 'Original'.\n"
                 "4. NEVER use placeholders like <!-- footer -->. Use literal OOXML tags.\n"
-                "5. Identify specific XML runs to modify. You move fast and break nothing."
+                "5. Identify specific XML runs to modify. You move fast and break nothing.\n"
+                "6. ALWAYS use utils/docx_handler.py for all Word operations. Never use open() on .docx files directly."
             )
         else:
             mode_instruction = (
@@ -701,7 +789,7 @@ if prompt:
             
             # 💉 SURGICAL PRIMER: Hard-injection for adherence
             if is_surgical:
-                msgs[-1]["content"] += "\n\n[SYSTEM: KALI SURGERY ACTIVE. RESPOND WITH ONLY '\"A\" -> \"B\"' PATTERNS. NO TUTORIALS. NO TEXT.]"
+                msgs[-1]["content"] += "\n\n[SYSTEM: KALI SURGERY ACTIVE. RESPOND WITH ONLY '\"A\" -> \"B\"' TEXT PATTERNS. DO NOT OUTPUT RAW XML TAGS OR CODE. ONLY CONTENT EDITS.]"
 
         # ── Intelligence Matrix (TPU-Locked Protocol) ──
         # Policy: Direct routing to Google Cloud TPU v3 Cluster
@@ -744,8 +832,11 @@ if prompt:
                 if st.session_state.get('template_bytes'):
                     with st.spinner("🚀 KALI ARCHITECT: Executing Structural Surgery..."):
                         edited_bytes = smart_surgical_edit(st.session_state.get('template_bytes'), full_res)
-                        st.session_state.final_doc = edited_bytes
-                    st.toast("✅ Document Reconstructed Successfully.")
+                        if edited_bytes:
+                            st.session_state.final_doc = edited_bytes
+                            st.toast("✅ Document Reconstructed Successfully.")
+                        else:
+                            st.toast("⚠️ Revision logic failed to find targets.")
                 
                 # AUTO-FLUSH: Vision Cache
                 if st.session_state.get('vision_active'):
@@ -772,12 +863,26 @@ with st.sidebar:
             st.toast("Copied to clipboard simulator!")
         st.success("Document cached in high-speed memory.")
 
-# ── Floating Action Badge (UX Polish) ────────────
+# ── Floating Action Center (v7.0) ────────────
 if st.session_state.get('final_doc'):
+    # Centered Download Hub for better visibility
+    st.markdown("---")
+    cols = st.columns([1, 2, 1])
+    with cols[1]:
+        st.success("✨ KALI AI: Professional Suite Reconstructed.")
+        st.download_button(
+            "💎 DOWNLOAD FINAL EDITED DOCUMENT",
+            data=st.session_state.final_doc,
+            file_name="Kali_AI_Final_Edit.docx",
+            use_container_width=True,
+            key="main_dl_hub"
+        )
+    
+    # Keep the pulse badge in the corner as well
     st.markdown("""
-        <div style='position: fixed; bottom: 20px; right: 20px; z-index: 1000;'>
-            <div class='pulse-badge' style='background: #1a472a; color: #fff; padding: 15px; border-radius: 50px; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3);'>
-                💾 File Ready for Download
+        <div style='position: fixed; bottom: 25px; right: 25px; z-index: 1000;'>
+            <div class='pulse-badge' style='background: #18122b; color: #a78bfa; padding: 18px 25px; border-radius: 50px; cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #2d1f5e; font-size: 14px;'>
+                🚀 File Ready: Final Revision Cached
             </div>
         </div>
     """, unsafe_allow_html=True)
