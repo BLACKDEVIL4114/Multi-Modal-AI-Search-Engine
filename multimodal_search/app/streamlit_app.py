@@ -9,11 +9,86 @@ if root_path not in sys.path:
     sys.path.append(root_path)
 
 from search.search_core import search_by_text, search_by_image
+from utils.docx_prompt_editor import edit_docx_bytes, extract_docx_text_from_bytes
 
 # 1. Page configuration
-st.set_page_config(page_title="Multimodal Image Search Engine", page_icon="🔍", layout="wide")
+st.set_page_config(page_title="Multimodal Search + DOCX Editor", page_icon="🔍", layout="wide")
+
+
+def render_docx_editor():
+    st.title("📄 DOCX Prompt Editor")
+    st.markdown("Upload a Word document, tell the editor what you want changed, and download the edited file.")
+
+    col_left, col_right = st.columns([1, 1])
+    with col_left:
+        uploaded_docx = st.file_uploader("Upload a DOCX file", type=["docx"])
+        prompt = st.text_area(
+            "Edit prompt",
+            placeholder='Example: replace "draft" with "final", add heading "Summary", and make the tone more professional.',
+            height=180,
+        )
+        author = st.text_input("Editor name", value="AI Assistant")
+
+    with col_right:
+        st.info("Tips")
+        st.write("- Use quoted text for precise replacements.")
+        st.write("- Examples: `replace \"old\" with \"new\"`, `add heading \"Next Steps\"`.")
+        st.write("- If the prompt is broad, the editor will try an LLM rewrite when credentials are configured.")
+
+    if uploaded_docx is not None:
+        file_bytes = uploaded_docx.getvalue()
+        with st.expander("Preview extracted text", expanded=False):
+            try:
+                st.text(extract_docx_text_from_bytes(file_bytes))
+            except Exception as exc:
+                st.warning(f"Could not extract text preview: {exc}")
+
+    if st.button("Edit DOCX", use_container_width=True):
+        if uploaded_docx is None:
+            st.error("Please upload a DOCX file first.")
+            return
+        if not prompt.strip():
+            st.error("Please describe the edits you want.")
+            return
+
+        with st.spinner("Applying edits..."):
+            try:
+                edited_bytes, result = edit_docx_bytes(
+                    uploaded_docx.getvalue(),
+                    prompt=prompt,
+                    author=author.strip() or "AI Assistant",
+                )
+                if result.strategy == "clarification":
+                    st.warning(result.summary)
+                else:
+                    st.success(result.summary)
+                st.caption(f"Strategy: {result.strategy}")
+                st.download_button(
+                    "Download edited DOCX",
+                    data=edited_bytes,
+                    file_name=os.path.splitext(uploaded_docx.name)[0] + "_edited.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                )
+                with st.expander("Applied instructions", expanded=False):
+                    if result.instructions:
+                        st.json(result.instructions)
+                    else:
+                        st.write("No structured instructions were returned. The editor used a rewrite or fallback strategy.")
+            except Exception as exc:
+                st.error(f"Could not edit the document: {exc}")
 
 def main():
+    workspace = st.sidebar.radio(
+        "Workspace",
+        ["Image Search", "DOCX Editor"],
+        index=0,
+    )
+
+    if workspace == "DOCX Editor":
+        render_docx_editor()
+        return
+
     st.title("🔍 Multimodal Image Search Engine")
     st.markdown("Search for images using text descriptions or other images.")
 

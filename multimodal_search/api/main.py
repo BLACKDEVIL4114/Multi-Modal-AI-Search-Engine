@@ -1,10 +1,11 @@
 import os
 import sys
-from fastapi import FastAPI, UploadFile, File, HTTPException
+import io
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
 from PIL import Image
-import io
 
 # Fix pathing so search module is discoverable
 root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -12,6 +13,7 @@ if root_path not in sys.path:
     sys.path.append(root_path)
 
 from search.search_core import search_by_text, search_by_image
+from utils.docx_prompt_editor import edit_docx_bytes
 
 app = FastAPI(
     title="KALI AI | Multimodal Search API",
@@ -49,6 +51,29 @@ async def image_search(file: UploadFile = File(...), top_k: int = 5):
         image = Image.open(io.BytesIO(contents))
         results = search_by_image(image, top_k=top_k)
         return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/docx/edit")
+async def edit_docx(file: UploadFile = File(...), prompt: str = Form(...), author: str = Form("AI Assistant")):
+    if not file.filename.lower().endswith(".docx"):
+        raise HTTPException(status_code=400, detail="File must be a .docx document.")
+
+    try:
+        contents = await file.read()
+        edited_bytes, result = edit_docx_bytes(contents, prompt=prompt, author=author)
+        filename = os.path.splitext(file.filename)[0] + "_edited.docx"
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Edit-Strategy": result.strategy,
+            "X-Edit-Summary": result.summary[:200],
+        }
+        return StreamingResponse(
+            io.BytesIO(edited_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers=headers,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

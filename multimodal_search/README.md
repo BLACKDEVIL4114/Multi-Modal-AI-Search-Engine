@@ -1,10 +1,12 @@
 # Multi-modal AI Search Engine
-A complete search engine that allows finding similar images from a dataset using either text queries or image uploads.
+A complete multimodal search engine that finds similar images from a dataset and also provides prompt-driven DOCX editing.
 
 ## Features
 - **Search by Text**: Enter descriptions like "a cat on the floor" to find matching images.
 - **Search by Image**: Upload an image to find visually similar ones in the dataset.
+- **DOCX Prompt Editing**: Upload a `.docx` file and describe the changes in natural language.
 - **REST API**: FastAPI layer for integration with external apps (POST /search/text, POST /search/image).
+- **DOCX API**: Edit Word files programmatically with `POST /docx/edit`.
 - **Docker Ready**: One-click deployment using Docker and Docker Compose.
 - **High-Power Retrieval**: Uses FAISS with persistent `.index` files for industrial-scale speed.
 - **GPU Acceleration**: Auto-detects CUDA for lightning-fast embedding generation.
@@ -57,6 +59,16 @@ python pipeline/build_index.py
 3. **Run Services**:
 - **UI**: `streamlit run app/streamlit_app.py`
 - **API**: `python api/main.py`
+
+## DOCX Editor
+The Streamlit app now includes a `DOCX Editor` workspace.
+
+Example prompt:
+```text
+Replace "draft" with "final", add heading "Summary", and delete "temporary note".
+```
+
+If `GROQ_API_KEY` or `OPENAI_API_KEY` is available, the editor can also try a broader rewrite for more open-ended prompts.
 
 ## API Usage Guide
 - **Text Search**: `POST /search/text`
