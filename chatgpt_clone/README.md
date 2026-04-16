@@ -1,32 +1,31 @@
-# My AI Assistant+ (ChatGPT Clone)
+# Kali AI | Intelligence Studio v3.0
 
-A lightweight ChatGPT-style application built with Streamlit and the Groq API.
+The ultimate multimodal search and high-precision precision editing engine. Built for industrial-scale intelligence and autonomous document surgery.
 
-## Features
-- **Fast Chat**: Powered by Llama 3 for near-instant responses.
-- **PDF Interaction**: Upload any PDF to ask questions about its content.
-- **Conversation Memory**: Remembers your previous messages in the current session.
-- **Streaming Responses**: Clean UI where text appears as it is generated.
-- **Sidebar Config**: Easily switch models or clear chat history.
+### 🔥 New in v3.0 (Industrial Precision)
+- **Surgical Protocol v3.0**: Robust docx editing with fuzzy matching, case-insensitivity, and auto-fallback for varying formats.
+- **Deep Architecture Scan**: Intelligent extraction from Headers, Footers, Tables, and nested objects.
+- **Web-Synapse integration**: Real-time web scraping and autonomous search for up-to-date knowledge.
+- **Vision-Ready**: Multimodal processing support for image-to-document workflows.
+- **TPU-Optimized Architecture**: Designed for silent, high-throughput execution.
 
-## Setup Instructions
-
-1. **Install Dependencies**:
+### 🚀 Setup
+1. **Dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
-
-2. **API Key**:
-   - Create a `.env` file in the root directory.
-   - Add your individual keys: `GROQ_API_KEY=your_key_here`
-   - Ensure the `.env` file is listed in your `.gitignore` to prevent exposure.
-
-3. **Run the Application**:
+2. **Configuration**:
+   - Create a `.env` file with `GROQ_API_KEY`.
+3. **Launch**:
    ```bash
    streamlit run app.py
    ```
 
-## How to use PDF Mode
-1. Open the sidebar.
-2. Click "Browse files" under PDF Knowledge.
-3. Once the text is extracted, the AI will use that information to answer your questions.
+### 🐍 Workflow
+1. **Integration**: Upload your `.docx`, `.pdf`, or Images.
+2. **Command**: Use natural language or the precision format: `"Original" -> "Replacement"`.
+3. **Surgery**: The engine performs deep scanning and executes changes across the entire document structure.
+4. **Acquisition**: Download your high-fidelity revision instantly.
+
+---
+*Powered by KALI Intelligence Studio*

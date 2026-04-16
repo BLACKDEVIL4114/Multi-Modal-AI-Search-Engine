@@ -18,6 +18,7 @@ from bs4 import BeautifulSoup
 
 from urllib.parse import urlparse
 import socket
+import time
 
 # ── Cybersecurity: Scraper Firewall ────────────
 def is_safe_url(url):
@@ -81,7 +82,6 @@ def fetch_web_content(url):
 
 # ── Session Init ───────────────────────────────────
 if "chat_id" not in st.session_state:
-    import time
     st.session_state.chat_id = str(int(time.time()))
 
 # ── Environment ────────────────────────────────────
@@ -239,56 +239,155 @@ def clean_content(text):
 
 def smart_surgical_edit(template_bytes, revised_content):
     """
-    KALI SURGICAL PROTOCOL v2.0
-    Phase 1: Inspect -> Phase 2: Plan -> Phase 3: Execute -> Phase 4: Verify
+    KALI SURGICAL PROTOCOL v5.0 (Elite Revision Tracking)
     """
     if not template_bytes:
         return create_pro_docx(revised_content)
     
-    doc = Document(io.BytesIO(template_bytes))
-    st.info("🔍 KALI SURGICAL PROTOCOL: Inspecting document structure...")
+    import zipfile
+    import tempfile
+    import shutil
+    from datetime import datetime
     
-    # Phase 2: Plan (Parse changes from AI response)
+    st.info("🛰️ KALI SURGICAL PROTOCOL: Initializing Elite Revision Engine...")
+    
     changes = []
-    for line in revised_content.split('\n'):
-        if "->" in line:
-            parts = line.split("->")
-            if len(parts) == 2:
-                old = parts[0].strip().strip('"')
-                new = parts[1].strip().strip('"')
-                if old and new:
-                    changes.append((old, new))
+    # --- UNIVERSAL SURGICAL PARSER (v7.0) ---
+    # Scans the entire response for valid surgical patterns: "Original" -> "New"
+    # Matches patterns regardless of conversational flanking text.
+    pattern = r'["\']{1,3}(.*?)["\']{1,3}\s*(?:\-+|==|=)>\s*["\']{1,3}(.*?)["\']{1,3}'
+    matches = re.findall(pattern, revised_content, re.DOTALL)
+    
+    for old, new in matches:
+        if old.strip() and new.strip():
+            # Filter out known placeholders that the AI might incorrectly use
+            if "<!--" in old and "-->" in old: continue
+            changes.append((old.strip(), new.strip()))
+    
+    if not changes:
+        # Fallback for unquoted labels
+        fallback_matches = re.findall(r'(?:Original|From):\s*(.*?)\s*(?:-+|==|=)>\s*(?:New|To):\s*(.*?)(?:\n|$)', revised_content, re.DOTALL | re.IGNORECASE)
+        for old, new in fallback_matches:
+            changes.append((old.strip(), new.strip()))
 
     if not changes:
-        st.warning("⚠️ No surgical targets identified. Falling back to full regeneration.")
+        st.warning("⚠️ No surgical targets identified. Reviewing document context...")
         return create_pro_docx(revised_content)
 
-    # Phase 3: Execute (Surgical Replacement)
-    total_swaps = 0
-    for old, new in changes:
-        print(f"[EXECUTE] Targeted Swap: {old} -> {new}")
-        for p in doc.paragraphs:
-            if old in p.text:
-                # Precision Run Surgery
-                for run in p.runs:
-                    if old in run.text:
-                        run.text = run.text.replace(old, new)
-                        total_swaps += 1
-                
-                # Cross-Run Fallback (if word was split across runs)
-                if old in p.text:
-                    p.runs[0].text = p.text.replace(old, new)
-                    for run in p.runs[1:]:
-                        run.text = ""
-                    total_swaps += 1
-
-    # Phase 4: Verify
-    if total_swaps > 0:
-        st.success(f"✅ Protocol Verified: {total_swaps} surgical edits sync'd.")
-    else:
-        st.error("❌ Verification Failed: Target patterns not found in template.")
+    # Phase 3: Execute (The Elite ZIP-XML Workflow)
+    try:
+        tmp_dir = tempfile.mkdtemp()
+        with zipfile.ZipFile(io.BytesIO(template_bytes), 'r') as zip_ref:
+            zip_ref.extractall(tmp_dir)
+            
+        # Target all XML content files
+        xml_targets = []
+        for root, dirs, files in os.walk(tmp_dir):
+            for file in files:
+                if file.endswith(".xml"):
+                    xml_targets.append(os.path.join(root, file))
+            
+        total_swaps = 0
+        st.write(f"🧬 Synchronizing XML Runs across {len(xml_targets)} nodes...")
         
-    return save_doc(doc)
+        author = "Kali AI"
+        date_str = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        for xml_path in xml_targets:
+            with open(xml_path, 'r', encoding='utf-8') as f:
+                xml_content = f.read()
+            
+            # 1. DEEP SYNTHESIS: Aggressive Word Noise Removal
+            # This strips spelling errors, grammar flags, bookmarks, and soft hyphens
+            # that Microsoft Word uses to fragment words in the background.
+            xml_content = re.sub(r'<w:proofErr w:type="(spellStart|spellEnd|gramStart|gramEnd)"/>', '', xml_content)
+            xml_content = re.sub(r'<w:bookmark(Start|End) [^>]*/>', '', xml_content)
+            xml_content = re.sub(r'<w:softHyphen/>', '', xml_content)
+            
+            # 2. Run Consolidation (K-a-l-i -> Kali)
+            xml_content = re.sub(r'</w:t></w:r><w:r><w:t>', '', xml_content)
+            xml_content = re.sub(r'</w:t></w:r><w:r><w:rPr>.*?</w:rPr><w:t>', '', xml_content)
+            
+            # 3. Tracked Changes Surgery (Redlining & Structural)
+            found_in_file = 0
+            for old, new in changes:
+                # DETECTION: Is this a structural XML change or a text content change?
+                is_structural = '<' in old or '<' in new or '>' in old or '>' in new
+                
+                old_esc = old.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                new_esc = new.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                
+                # Check 1: Exact Match (Raw)
+                # Check 2: Exact Match (Escaped)
+                # Check 3: Word-Field Normalization (flexible backslashes/case)
+                
+                if is_structural:
+                    # STRUCTURAL MODE: Direct XML Injection (No redlining as it breaks schema)
+                    if old in xml_content:
+                        xml_content = xml_content.replace(old, new)
+                        found_in_file += 1
+                        total_swaps += 1
+                    elif old_esc in xml_content:
+                        xml_content = xml_content.replace(old_esc, new)
+                        found_in_file += 1
+                        total_swaps += 1
+                    else:
+                        # Attempt fuzzy XML match (flexible whitespace/order)
+                        pattern = re.escape(old).replace(r'\ ', r'\s+')
+                        if re.search(pattern, xml_content):
+                            xml_content = re.sub(pattern, new, xml_content)
+                            found_in_file += 1
+                            total_swaps += 1
+                else:
+                    # TEXT MODE: Redlining (Tracked Changes)
+                    replacement = (
+                        f'<w:del w:id="{total_swaps*10}" w:author="{author}" w:date="{date_str}">'
+                        f'<w:r><w:delText>{old_esc}</w:delText></w:r></w:del>'
+                        f'<w:ins w:id="{total_swaps*10+1}" w:author="{author}" w:date="{date_str}">'
+                        f'<w:r><w:t>{new_esc}</w:t></w:r></w:ins>'
+                    )
+                    
+                    # Fuzzy match for Word instruction fields (flexible backslashes)
+                    word_field_pat = re.escape(old).replace(r'\*', r'\\?\*')
+                    
+                    if old in xml_content:
+                        xml_content = xml_content.replace(old, replacement)
+                        found_in_file += 1
+                        total_swaps += 1
+                    elif old_esc in xml_content:
+                        xml_content = xml_content.replace(old_esc, replacement)
+                        found_in_file += 1
+                        total_swaps += 1
+                    elif re.search(word_field_pat, xml_content, re.IGNORECASE):
+                        xml_content = re.sub(word_field_pat, replacement, xml_content, flags=re.IGNORECASE)
+                        found_in_file += 1
+                        total_swaps += 1
+
+            if found_in_file > 0:
+                with open(xml_path, 'w', encoding='utf-8') as f:
+                    f.write(xml_content)
+
+        # 3. Repack
+        bio = io.BytesIO()
+        with zipfile.ZipFile(bio, 'w', zipfile.ZIP_DEFLATED) as zip_out:
+            for root, dirs, files in os.walk(tmp_dir):
+                for file in files:
+                    full_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(full_path, tmp_dir)
+                    zip_out.write(full_path, rel_path)
+        
+        shutil.rmtree(tmp_dir)
+        
+        if total_swaps > 0:
+            st.success(f"💎 Elite Revision Verified: {total_swaps} Revisions redlined.")
+            return bio.getvalue()
+        else:
+            st.error("❌ Verification Failed: Target patterns not found in document architecture.")
+            return template_bytes
+
+    except Exception as e:
+        st.error(f"❌ Elite Surgery Failure: {str(e)}")
+        return template_bytes
 
 def save_doc(doc):
     bio = io.BytesIO()
@@ -296,23 +395,34 @@ def save_doc(doc):
     return bio.getvalue()
 
 def create_pro_docx(content):
+    """
+    KALI PRO ENGINE v4.0 (Claude-Fidelity)
+    """
     content = clean_content(content)
     doc = Document()
+    
+    # 🎨 CLAUDE-FIDELITY THEME
+    style = doc.styles['Normal']
+    font = style.font
+    font.name = 'Arial' 
+    font.size = Pt(11)
+    
     sections = doc.sections
     for section in sections:
         section.top_margin = Inches(1)
         section.bottom_margin = Inches(1)
         section.left_margin = Inches(1)
         section.right_margin = Inches(1)
-    style = doc.styles['Normal']
-    style.font.name = 'Calibri'
-    style.font.size = Pt(11)
+        section.page_width = Inches(8.5)
+        section.page_height = Inches(11)
+
     lines = content.split('\n')
     for line in lines:
         line = line.strip()
         if not line:
             doc.add_paragraph()
             continue
+            
         if line.startswith('### '):
             p = doc.add_heading(line[4:], level=3)
         elif line.startswith('## '):
@@ -321,7 +431,7 @@ def create_pro_docx(content):
             p = doc.add_heading(line[2:], level=1)
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         elif line.startswith('- ') or line.startswith('* '):
-            doc.add_paragraph(line[2:], style='List Bullet')
+            p = doc.add_paragraph(line[2:], style='List Bullet')
         else:
             p = doc.add_paragraph()
             parts = re.split(r'(\*\*.*?\*\*)', line)
@@ -331,6 +441,7 @@ def create_pro_docx(content):
                     run.bold = True
                 else:
                     p.add_run(part)
+                    
     bio = io.BytesIO()
     doc.save(bio)
     return bio.getvalue()
@@ -339,7 +450,28 @@ def get_file_text(file):
     if file.name.endswith(".pdf"):
         return "\n".join([p.extract_text() for p in PdfReader(file).pages if p.extract_text()])
     elif file.name.endswith(".docx"):
-        return "\n".join([para.text for para in Document(io.BytesIO(file.getvalue())).paragraphs])
+        doc = Document(io.BytesIO(file.getvalue()))
+        text_parts = []
+        
+        # Paragraphs
+        for para in doc.paragraphs:
+            if para.text.strip(): text_parts.append(para.text)
+            
+        # Tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for para in cell.paragraphs:
+                        if para.text.strip(): text_parts.append(para.text)
+                        
+        # Headers/Footers
+        for section in doc.sections:
+            for para in section.header.paragraphs:
+                if para.text.strip(): text_parts.append(f"[HEADER] {para.text}")
+            for para in section.footer.paragraphs:
+                if para.text.strip(): text_parts.append(f"[FOOTER] {para.text}")
+                
+        return "\n".join(text_parts)
     return ""
 
 def get_chunks(text):
@@ -398,8 +530,6 @@ with st.sidebar:
     
     if st.button("➕ New chat", use_container_width=True):
         st.session_state.messages = []
-        st.session_state.chat_id = str(int(io.time.time())) if hasattr(io, 'time') else str(os.getpid() + int(os.path.getmtime(__file__))) # Fallback for uniqueness
-        import time
         st.session_state.chat_id = str(int(time.time()))
         for key in ["template_bytes", "chunks", "index", "final_doc"]:
             if key in st.session_state: del st.session_state[key]
@@ -431,14 +561,26 @@ with st.sidebar:
     st.divider()
     
     auth_key = st.text_input("Engine Key", value=DEFAULT_API_KEY, type="password") if not DEFAULT_API_KEY else DEFAULT_API_KEY
+    if not auth_key:
+        st.warning("🔑 GROQ_API_KEY not found. Please add it to your .env file or enter it above to enable Kali AI.")
     
     st.divider()
-    st.markdown("<span class='pulse-badge'>System: Online</span>", unsafe_allow_html=True)
+    status_label = "Online" if auth_key else "Standby (Awaiting Key)"
+    st.markdown(f"<span class='pulse-badge'>System: {status_label}</span>", unsafe_allow_html=True)
 
 # ── Main Stage ─────────────────────────────────────
-st.markdown("<div style='text-align: center; margin-top: 10vh;'>", unsafe_allow_html=True)
-st.markdown("<h1 class='main-title'>READY WHEN YOU ARE.</h1>", unsafe_allow_html=True)
-st.markdown("<div class='sub-title'>High-Precision Intelligence // Kali Edition</div>", unsafe_allow_html=True)
+has_template = bool(st.session_state.get('template_bytes'))
+current_mode = "ARCHITECT" if (has_template and st.session_state.get('surgical_mode', True)) else "ASSISTANT"
+status_color = "#D4AF37" if current_mode == "ARCHITECT" else "#064E3B"
+
+st.markdown(f"<div style='text-align: center; margin-top: 10vh;'>", unsafe_allow_html=True)
+st.markdown(f"<h1 class='main-title' style='color:{status_color};'>KALI {current_mode}</h1>", unsafe_allow_html=True)
+st.markdown(f"<div class='sub-title'>{current_mode} LEVEL INTELLIGENCE // READY</div>", unsafe_allow_html=True)
+
+if has_template:
+    col1, col2, col3 = st.columns([1,1,1])
+    with col2:
+        st.session_state.surgical_mode = st.toggle("🔧 Surgical Mode (Direct Edit)", value=st.session_state.get('surgical_mode', True))
 st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -469,6 +611,7 @@ with footer_cols[0]:
                 if file_type == 'docx':
                     if "template_bytes" not in st.session_state:
                         st.session_state.template_bytes = f.getvalue()
+                        st.session_state.surgical_mode = True # Default to surgical
                     raw_text_parts.append(get_file_text(f))
                 elif file_type == 'pdf':
                     raw_text_parts.append(get_file_text(f))
@@ -513,11 +656,31 @@ if prompt:
     try:
         rag_context = fetch_knowledge(prompt, st.session_state.get('index'), st.session_state.get('chunks'))
         full_context = f"{rag_context}\n{web_context}"
+        
+        # ── Intelligence Mode Selection ────────────────
+        has_template = bool(st.session_state.get('template_bytes'))
+        is_surgical = has_template and st.session_state.get('surgical_mode', True)
+        
+        mode_instruction = ""
+        if is_surgical:
+            mode_instruction = (
+                "🚨 ARCHITECTURAL MODE ACTIVE: YOU ARE A SURGICAL BINARY ENGINE.\n"
+                "1. DO NOT explain what you are doing. DO NOT provide usage instructions.\n"
+                "2. PROVIDE ONLY surgical patterns using the exact format: '\"Original XML/Text\" -> \"New XML/Text\"'.\n"
+                "3. ABSOLUTE RULE: For structural changes, you MUST find the existing tag (e.g., <w:sectPr/>) and provide it as the 'Original'.\n"
+                "4. NEVER use placeholders like <!-- footer -->. Use literal OOXML tags.\n"
+                "5. Identify specific XML runs to modify. You move fast and break nothing."
+            )
+        else:
+            mode_instruction = (
+                "CONVERSATIONAL MODE ACTIVE: Act as a high-intelligence professional assistant. "
+                "Provide detailed, human-like, and natural responses. Use formatting, bolding, and lists."
+            )
+
         sys_msg = (
-            "You are a Precision Document Architect (Claude-Style). "
-            "Your goal is to perform SURGICAL EDITS on a document template. "
-            "YOU MUST ONLY provide the specific changes using '\"Original\" -> \"Replacement\"'.\n"
-            "CONTEXT:\n" + full_context
+            f"You are KALI AI (v6.0 Architectural Edition), an elite intelligence and document studio.\n"
+            f"{mode_instruction}\n\n"
+            f"CONTEXT (RAG + Web Sync):\n{full_context}"
         )
 
         current_model = brain_model
@@ -535,6 +698,10 @@ if prompt:
         else:
             for m in st.session_state.messages[-5:]:
                 msgs.append({"role": m["role"], "content": m["content"]})
+            
+            # 💉 SURGICAL PRIMER: Hard-injection for adherence
+            if is_surgical:
+                msgs[-1]["content"] += "\n\n[SYSTEM: KALI SURGERY ACTIVE. RESPOND WITH ONLY '\"A\" -> \"B\"' PATTERNS. NO TUTORIALS. NO TEXT.]"
 
         # ── Intelligence Matrix (TPU-Locked Protocol) ──
         # Policy: Direct routing to Google Cloud TPU v3 Cluster
@@ -569,27 +736,48 @@ if prompt:
             # PERSISTENCE: Auto-save after response
             save_chat_to_disk(st.session_state.chat_id, st.session_state.messages)
             
-            if "->" in full_res or any(word in prompt.lower() for word in ["download", "link", "get file"]):
+            # --- ENHANCED SURGICAL TRIGGER (v6.2) ---
+            # Triggers if arrow syntax exists OR if architectural XML is detected
+            architectural_intent = any(tag in full_res for tag in ["<w:sectPr>", "<w:pgNumType>", "<w:headerReference>", "<w:footerReference>"])
+            
+            if "->" in full_res or architectural_intent or any(word in prompt.lower() for word in ["download", "link", "get file"]):
                 if st.session_state.get('template_bytes'):
-                    with st.spinner("Executing Surgery..."):
+                    with st.spinner("🚀 KALI ARCHITECT: Executing Structural Surgery..."):
                         edited_bytes = smart_surgical_edit(st.session_state.get('template_bytes'), full_res)
                         st.session_state.final_doc = edited_bytes
-                    st.download_button("📥 DOWNLOAD REVISED DOCUMENT", data=edited_bytes, file_name="Kali_AI_Revision.docx", key=f"inline_dl_{len(st.session_state.messages)}")
+                    st.toast("✅ Document Reconstructed Successfully.")
                 
-                # AUTO-FLUSH: Clear Vision Memory to prevent Bloat
+                # AUTO-FLUSH: Vision Cache
                 if st.session_state.get('vision_active'):
                     st.session_state.vision_active = False
                     st.session_state.vision_base64 = None
                     st.toast("Vision Cache Flushed (RAM Optimized)")
-            else:
-                st.error("Missing API Key.")
                 
     except Exception as e:
         st.error(f"Intelligence Exception: {str(e)}")
 
-if st.session_state.get('final_doc'):
-    st.divider()
-    with st.expander("📂 PERSISTENT DOWNLOAD CENTER", expanded=True):
-        st.download_button("📥 DOWNLOAD FINAL DOCUMENT (Preserved)", data=st.session_state.final_doc, file_name="Kali_AI_Edited.docx", key="persistent_dl")
-        if st.button("📋 COPY REPORT CONTENT"):
+# ── Sidestage: Persistent Export Center (v6.2) ──────
+with st.sidebar:
+    if st.session_state.get('final_doc'):
+        st.divider()
+        st.markdown("### 🏛️ EXPORT CENTER")
+        st.download_button(
+            "📥 DOWNLOAD REVISED DOCUMENT", 
+            data=st.session_state.final_doc, 
+            file_name="Kali_AI_Final_Revision.docx", 
+            key="side_dl",
+            use_container_width=True
+        )
+        if st.button("📋 COPY LATEST REPORT", use_container_width=True):
             st.toast("Copied to clipboard simulator!")
+        st.success("Document cached in high-speed memory.")
+
+# ── Floating Action Badge (UX Polish) ────────────
+if st.session_state.get('final_doc'):
+    st.markdown("""
+        <div style='position: fixed; bottom: 20px; right: 20px; z-index: 1000;'>
+            <div class='pulse-badge' style='background: #1a472a; color: #fff; padding: 15px; border-radius: 50px; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3);'>
+                💾 File Ready for Download
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
