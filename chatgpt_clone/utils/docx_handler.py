@@ -9,6 +9,16 @@ def load_doc(source):
         raise FileNotFoundError(f"File not found: {source}")
     return Document(source)
 
+def verify_docx_bytes(data):
+    """Verifies that a binary docx stream is architecturally sound."""
+    import io
+    try:
+        source = io.BytesIO(data)
+        Document(source)
+        return True
+    except Exception:
+        return False
+
 def save_doc(doc, path):
     # Backup before overwrite
     backup = None

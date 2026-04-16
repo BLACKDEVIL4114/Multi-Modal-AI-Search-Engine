@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from docx import Document
 from docx.shared import Pt, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from utils.docx_handler import load_doc, save_doc
+from utils.docx_handler import load_doc, save_doc, verify_docx_bytes
 
 try:
     from groq import Groq
@@ -521,23 +521,32 @@ def smart_surgical_edit(template_bytes, revised_content):
                 with open(xml_path, 'w', encoding='utf-8') as f:
                     f.write(xml_content)
 
-        # 3. Repack
+        # 3. Repack (Hardened v17.0)
         bio = io.BytesIO()
         with zipfile.ZipFile(bio, 'w', zipfile.ZIP_DEFLATED) as zip_out:
             for root, dirs, files in os.walk(tmp_dir):
                 for file in files:
+                    # BLOCK: Hidden/Corrupt system files
+                    if file.startswith('.') or file.startswith('_'): continue
+                    
                     full_path = os.path.join(root, file)
                     rel_path = os.path.relpath(full_path, tmp_dir)
                     zip_out.write(full_path, rel_path)
         
         shutil.rmtree(tmp_dir)
+        final_bytes = bio.getvalue()
         
-        if total_swaps > 0:
-            st.success(f"💎 Elite Revision Verified: {total_swaps} Revisions redlined.")
-            return bio.getvalue()
+        # 🛡️ THE ARCHITECTURAL GATE
+        if verify_docx_bytes(final_bytes):
+            if total_swaps > 0:
+                st.success(f"💎 Elite Revision Verified: {total_swaps} Revisions redlined.")
+                return final_bytes
+            else:
+                st.info("⚠️ Revision logic failed to find surgical targets in XML.")
+                return template_bytes
         else:
-            st.error("❌ Verification Failed: Target patterns not found in document architecture.")
-            return None # Return None to prevent showing the download button for original file
+            st.error("🚨 CRITICAL: Surgical edit produced a corrupt XML structure. Reverting to original.")
+            return template_bytes
 
     except Exception as e:
         st.error(f"❌ Elite Surgery Failure: {str(e)}")
