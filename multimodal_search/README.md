@@ -4,74 +4,62 @@ A complete search engine that allows finding similar images from a dataset using
 ## Features
 - **Search by Text**: Enter descriptions like "a cat on the floor" to find matching images.
 - **Search by Image**: Upload an image to find visually similar ones in the dataset.
-- **Similarity Scoring**: Each result displays a similarity match percentage (e.g., Match: 91%).
-- **Automated Indexing**: Pipeline script to pre-calculate and store embeddings for fast retrieval.
-- **Interactive UI**: Clean Streamlit interface with loading spinners and error handling.
-- **Robustness**: Validates file paths, handles bad uploads, and ensures the index is built before searching.
+- **REST API**: FastAPI layer for integration with external apps (POST /search/text, POST /search/image).
+- **Docker Ready**: One-click deployment using Docker and Docker Compose.
+- **High-Power Retrieval**: Uses FAISS with persistent `.index` files for industrial-scale speed.
+- **GPU Acceleration**: Auto-detects CUDA for lightning-fast embedding generation.
+- **Interactive UI**: Clean Streamlit interface with sidebar controls for result counts (Top-K).
 
 ## Tech Stack
 | Category | Library/Technology |
 | :--- | :--- |
-| Core Language | Python |
-| Dataset Handling | `json`, `os` |
-| Image Processing | `Pillow` |
-| Math & Storage | `NumPy` |
-| Deep Learning | `PyTorch`, `transformers` (CLIP) |
-| Vector Search | `faiss-cpu` |
+| API Framework | `FastAPI`, `Uvicorn` |
 | UI Framework | `Streamlit` |
+| Containerization| `Docker`, `Docker Compose` |
+| Deep Learning | `PyTorch`, `transformers` (CLIP) |
+| Vector Search | `FAISS` |
 
 ## Folder Structure
 ```text
 multimodal_search/
-├── data/
-│   ├── images/         # Place your .jpg files here
-│   └── dataset.json    # Map images to descriptions
-├── embeddings/
-│   ├── image_embeddings.npy
-│   └── image_paths.npy
-├── pipeline/
-│   └── build_index.py
-├── search/
-│   └── search_core.py
+├── api/
+│   └── main.py          # FastAPI Backend
 ├── app/
-│   └── streamlit_app.py
-├── requirements.txt
-└── README.md
+│   └── streamlit_app.py # Streamlit Frontend
+├── pipeline/
+│   └── build_index.py   # Embedding Generator
+├── search/
+│   └── search_core.py   # Core Logic
+├── Dockerfile           # System Image
+└── docker-compose.yml   # Multi-service Orchestration
 ```
 
 ## Setup Instructions
 
-### Step 1 - Project Setup
-Clone or download this project to your local machine.
+### Option 1: Using Docker (Recommended)
+Launch the entire stack (API + UI) with one command:
+```bash
+docker-compose up --build
+```
+- UI: http://localhost:8501
+- API: http://localhost:8000
+- Docs: http://localhost:8000/docs
 
-### Step 2 - Install Dependencies
-Ensure you have Python 3.8+ installed. Run the following command:
+### Option 2: Local Setup
+1. **Install Dependencies**:
 ```bash
 pip install -r requirements.txt
 ```
-
-### Step 3 - Add Data
-1. Place your images (`.jpg` or `.png`) inside the `data/images/` folder.
-2. Update `data/dataset.json` with the corresponding file paths and captions.
-
-### Step 4 - Generate Embeddings
-Run the indexing script once to process images and store vectors in the `embeddings/` folder:
+2. **Generate Index**:
 ```bash
 python pipeline/build_index.py
 ```
+3. **Run Services**:
+- **UI**: `streamlit run app/streamlit_app.py`
+- **API**: `python api/main.py`
 
-### Step 5 - Launch the App
-Start the Streamlit interface:
-```bash
-streamlit run app/streamlit_app.py
-```
-
-## How to Use
-1. **Search by Text**: Choose the "Search by Text" radio button, type a query, and click Search.
-2. **Search by Image**: Choose the "Search by Image" radio button, upload a file (jpg/png), see the preview, and click Search.
-3. **View Results**: The top 3 most similar images will be displayed in columns with their match percentage.
-
-## Notes
-- This project uses the **CLIP (Contrastive Language-Image Pre-Training)** model (`openai/clip-vit-base-patch32`) from HuggingFace.
-- FAISS is used for high-performance vector similarity search.
-- Embeddings are normalized to ensure Cosine Similarity is performed using Inner Product (`IndexFlatIP`).
+## API Usage Guide
+- **Text Search**: `POST /search/text`
+  - Body: `{"text": "a orange cat", "top_k": 5}`
+- **Image Search**: `POST /search/image?top_k=5`
+  - Body: `multipart/form-data` (file)
