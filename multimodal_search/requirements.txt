@@ -11,3 +11,8 @@ uvicorn==0.27.1
 python-multipart==0.0.9
 lxml==5.1.0
 groq
+duckduckgo-search
+googlesearch-python
+beautifulsoup4
+trafilatura
+PyPDF2

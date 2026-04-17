@@ -22,6 +22,10 @@ def get_model():
         _PROCESSOR = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
     return _MODEL, _PROCESSOR
 
+def load_model_and_processor():
+    """Alias for get_model for compatibility."""
+    return get_model()
+
 def search_by_text(query, top_k=3):
     """Search images using a text query."""
     try:

@@ -8,6 +8,10 @@ from docx import Document
 import io
 import time
 import requests
+from duckduckgo_search import DDGS
+from googlesearch import search as gsearch
+import trafilatura
+import re
 
 # Load Intelligence
 load_dotenv()
@@ -142,7 +146,10 @@ def call_groq(prompt):
             try:
                 completion = client.chat.completions.create(
                     model=model,
-                    messages=[{"role": "system", "content": "Analyze accurately. Be concise."}, {"role": "user", "content": prompt}],
+                    messages=[
+                        {"role": "system", "content": "You are Zenith Intelligence Studio v5.0. If LIVE INTERNET DATA is provided, prioritize it above all else. For sports scores, provide a structured scorecard. Be professional, technical, and accurate."},
+                        {"role": "user", "content": prompt}
+                    ],
                     temperature=0.4,
                     max_tokens=2000
                 )
@@ -163,14 +170,14 @@ def call_bedrock(prompt):
     payload = {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": 4000,
-        "system": "You are the Zenith AI. Respond using the 8-point blueprint.",
+        "system": "You are Zenith Intelligence Studio v5.0. If LIVE INTERNET DATA is provided, prioritize it. For sports/news, provide structured, high-precision reports. Use bold markers for key events.",
         "messages": [{"role": "user", "content": prompt}],
         "thinking": {"type": "enabled", "budget_tokens": 1024},
-        "temperature": 1.0
+        "temperature": 0.7
     }
     
     try:
-        response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         if response.status_code == 200:
             return response.json()["content"][-1]["text"]
         
@@ -181,6 +188,62 @@ def call_bedrock(prompt):
         return call_groq(prompt) # Universal silent fallback
     except Exception as e:
         return call_groq(prompt)
+
+# --- WEB-OCULAR INTELLIGENCE ---
+def perform_web_search(query):
+    results_text = []
+    deep_scraped_content = []
+    q_lower = query.lower()
+    
+    # Layer 0: Direct Authority Scraping (Bypasses Search challenge)
+    if any(k in q_lower for k in ["ipl", "cricket", "score", "match"]):
+        try:
+            with st.spinner("🎯 Targeting Cricbuzz Authority..."):
+                live_data = scrape_url("https://www.cricbuzz.com/cricket-match/live-scores")
+                if live_data:
+                    deep_scraped_content.append(f"--- DIRECT CRICBUZZ LIVE FEED ---\n{live_data[:6000]}")
+        except Exception: pass
+
+    # Layer 1: Google Precision Intelligence
+    try:
+        search_query = query
+        if q_lower.startswith("urrent"): search_query = "current " + query[6:]
+        
+        search_results = list(gsearch(search_query, num_results=5, advanced=True))
+        for idx, url in enumerate(search_results):
+            results_text.append(f"TITLE: {url.title}\nSNIPPET: {url.description}\nSOURCE: {url.url}")
+            
+            if idx == 0 and not deep_scraped_content:
+                with st.spinner(f"🔍 Deep-Scanning {url.title}..."):
+                    content = scrape_url(url.url)
+                    if content: deep_scraped_content.append(f"--- SOURCE CONTENT RAG ---\n{content[:4000]}")
+    except Exception as e:
+        print(f"Google Search Error: {e}")
+    
+    # Layer 2: DuckDuckGo Fallback
+    if not results_text:
+        try:
+            with DDGS() as ddgs:
+                news_res = list(ddgs.news(query, max_results=5))
+                for r in news_res:
+                    results_text.append(f"NEWS: {r.get('title')}\nSUMMARY: {r.get('body')}\nLINK: {r.get('url')}")
+        except Exception: pass
+    
+    # Final Context Synthesis
+    final_context = "\n\n".join(results_text)
+    if deep_scraped_content:
+        final_context += "\n\n=== ULTIMATE LIVE CONTEXT (CRITICAL) ===\n" + "\n\n".join(deep_scraped_content)
+    
+    return final_context if (results_text or deep_scraped_content) else "⚠️ Global Intelligence Link Offline."
+
+
+
+def scrape_url(url):
+    try:
+        downloaded = trafilatura.fetch_url(url)
+        return trafilatura.extract(downloaded)
+    except Exception:
+        return ""
 
 def transcribe_audio(audio_file):
     try:
@@ -208,90 +271,112 @@ def extract_text(file):
         return transcribe_audio(file)
     return file.read().decode('utf-8', errors='ignore')
 
-# --- APP INTERFACE ---
-apply_premium_ui()
+# --- APP EXECUTION GATE ---
+def run_studio():
+    apply_premium_ui()
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# Sidebar Content
-with st.sidebar:
-    st.markdown("<div class='sidebar-title'>💠 SYSTEM COMMAND</div>", unsafe_allow_html=True)
-    engine = st.radio("Choose Intelligence Layer:", ["Llama (High-Speed)", "Claude (Zenith Logic)"])
-    
-    st.markdown("---")
-    st.markdown("<div class='sidebar-title'>📊 INTELLIGENCE MATRIX</div>", unsafe_allow_html=True)
-    st.markdown("""
-        <div style='background: rgba(0,0,0,0.03); padding: 15px; border-radius: 12px; font-size: 0.8rem;'>
-            <div style='display: flex; justify-content: space-between; margin-bottom: 8px;'>
-                <span>Neural Status:</span><span style='color: #0084ff; font-weight: bold;'>ONLINE</span>
-            </div>
-            <div style='display: flex; justify-content: space-between; margin-bottom: 8px;'>
-                <span>Memory Buffer:</span><span>98.4%</span>
-            </div>
-            <div style='display: flex; justify-content: space-between;'>
-                <span>Active Core:</span><span>Sonnet 3.7</span>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    st.markdown("<div class='sidebar-title'>📁 UNIVERSAL MODAL</div>", unsafe_allow_html=True)
-    uploaded_file = st.file_uploader("Drop any file (PDF, Doc, Audio, Image)", type=['pdf','docx','txt','py','js','mp3','wav','m4a','ogg','png','jpg','jpeg'])
-    
-    if st.button("🗑️ Reset Neural Matrix"):
+    if "messages" not in st.session_state:
         st.session_state.messages = []
-        st.rerun()
 
-# Processing Files
-context = ""
-if uploaded_file:
-    with st.spinner("🧠 Ingesting Multi-Modal Data..."):
-        context = extract_text(uploaded_file)
-
-# Welcome Hero (Internal LONELY remover)
-if not st.session_state.messages:
-    st.markdown("<h1 class='main-header'>ZENITH STUDIO v5.0</h1>", unsafe_allow_html=True)
-    st.markdown("""
-        <div class="glass-card" style="text-align: center; margin-top: -20px;">
-            <p style="font-size: 1.2rem; color: #64748b; margin-bottom: 2rem;">The Masterpiece Edition — Industrial Multi-Modal Intelligence</p>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
-                <div style="padding: 20px; border-radius: 15px; background: rgba(0,132,255,0.05);">
-                    <div style="font-size: 2rem;">📄</div>
-                    <div style="font-weight: bold; margin-top: 10px;">Doc Surgery</div>
-                    <div style="font-size: 0.8rem; color: #64748b;">Deep PDF/Doc Analysis</div>
+    # Sidebar Content
+    with st.sidebar:
+        st.markdown("<div class='sidebar-title'>💠 SYSTEM COMMAND</div>", unsafe_allow_html=True)
+        engine = st.radio("Choose Intelligence Layer:", ["Llama (High-Speed)", "Claude (Zenith Logic)"])
+        
+        st.markdown("---")
+        st.markdown("<div class='sidebar-title'>📊 INTELLIGENCE MATRIX</div>", unsafe_allow_html=True)
+        st.markdown("""
+            <div style='background: rgba(0,0,0,0.03); padding: 15px; border-radius: 12px; font-size: 0.8rem;'>
+                <div style='display: flex; justify-content: space-between; margin-bottom: 8px;'>
+                    <span>Neural Status:</span><span style='color: #0084ff; font-weight: bold;'>ONLINE</span>
                 </div>
-                <div style="padding: 20px; border-radius: 15px; background: rgba(168,127,243,0.05);">
-                    <div style="font-size: 2rem;">🎙️</div>
-                    <div style="font-weight: bold; margin-top: 10px;">Audio Neural</div>
-                    <div style="font-size: 0.8rem; color: #64748b;">Whisper-V3 Transcription</div>
+                <div style='display: flex; justify-content: space-between; margin-bottom: 8px;'>
+                    <span>Memory Buffer:</span><span>98.4%</span>
                 </div>
-                <div style="padding: 20px; border-radius: 15px; background: rgba(0,132,255,0.05);">
-                    <div style="font-size: 2rem;">🛡️</div>
-                    <div style="font-weight: bold; margin-top: 10px;">Self-Healing</div>
-                    <div style="font-size: 0.8rem; color: #64748b;">Auto Quota Routing</div>
+                <div style='display: flex; justify-content: space-between;'>
+                    <span>Active Core:</span><span>Sonnet 3.7</span>
                 </div>
             </div>
-            <p style="margin-top: 2rem; font-size: 0.9rem; color: #94a3b8;">Type your first command below to wake the engine...</p>
-        </div>
-    """, unsafe_allow_html=True)
-
-# Chat Interface
-for message in st.session_state.messages:
-    div_class = "user-bubble" if message["role"] == "user" else "ai-bubble"
-    st.markdown(f"<div class='{div_class}'>{message['content']}</div>", unsafe_allow_html=True)
-
-if prompt := st.chat_input("Command the Zenith..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    st.markdown(f"<div class='user-bubble'>{prompt}</div>", unsafe_allow_html=True)
-
-    with st.spinner("📡 Orchestrating Neural Response..."):
-        full_prompt = f"CONTEXT FROM FILE:\n{context}\n\nUSER COMMAND: {prompt}" if context else prompt
+        """, unsafe_allow_html=True)
         
-        if engine == "Claude (Zenith Logic)":
-            response = call_bedrock(full_prompt)
-        else:
-            response = call_groq(full_prompt)
+        st.markdown("---")
+        st.markdown("<div class='sidebar-title'>📁 UNIVERSAL MODAL</div>", unsafe_allow_html=True)
+        uploaded_file = st.file_uploader("Drop any file (PDF, Doc, Audio, Image)", type=['pdf','docx','txt','py','js','mp3','wav','m4a','ogg','png','jpg','jpeg'])
+        
+        if st.button("🗑️ Reset Neural Matrix"):
+            st.session_state.messages = []
+            st.rerun()
 
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        st.markdown(f"<div class='ai-bubble'>{response}</div>", unsafe_allow_html=True)
+    # Processing Files
+    context = ""
+    if uploaded_file:
+        with st.spinner("🧠 Ingesting Multi-Modal Data..."):
+            context = extract_text(uploaded_file)
+
+    # Welcome Hero (Internal LONELY remover)
+    if not st.session_state.messages:
+        st.markdown("<h1 class='main-header'>ZENITH STUDIO v5.0</h1>", unsafe_allow_html=True)
+        st.markdown("""
+            <div class="glass-card" style="text-align: center; margin-top: -20px;">
+                <p style="font-size: 1.2rem; color: #64748b; margin-bottom: 2rem;">The Masterpiece Edition — Industrial Multi-Modal Intelligence</p>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+                    <div style="padding: 20px; border-radius: 15px; background: rgba(0,132,255,0.05);">
+                        <div style="font-size: 2rem;">📄</div>
+                        <div style="font-weight: bold; margin-top: 10px;">Doc Surgery</div>
+                        <div style="font-size: 0.8rem; color: #64748b;">Deep PDF/Doc Analysis</div>
+                    </div>
+                    <div style="padding: 20px; border-radius: 15px; background: rgba(168,127,243,0.05);">
+                        <div style="font-size: 2rem;">🎙️</div>
+                        <div style="font-weight: bold; margin-top: 10px;">Audio Neural</div>
+                        <div style="font-size: 0.8rem; color: #64748b;">Whisper-V3 Transcription</div>
+                    </div>
+                    <div style="padding: 20px; border-radius: 15px; background: rgba(0,132,255,0.05);">
+                        <div style="font-size: 2rem;">🛡️</div>
+                        <div style="font-weight: bold; margin-top: 10px;">Self-Healing</div>
+                        <div style="font-size: 0.8rem; color: #64748b;">Auto Quota Routing</div>
+                    </div>
+                </div>
+                <p style="margin-top: 2rem; font-size: 0.9rem; color: #94a3b8;">Type your first command below to wake the engine...</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+    # Chat Interface
+    for message in st.session_state.messages:
+        div_class = "user-bubble" if message["role"] == "user" else "ai-bubble"
+        st.markdown(f"<div class='{div_class}'>{message['content']}</div>", unsafe_allow_html=True)
+
+    if prompt := st.chat_input("Command the Zenith..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.markdown(f"<div class='user-bubble'>{prompt}</div>", unsafe_allow_html=True)
+
+        with st.spinner("📡 Orchestrating Neural Response..."):
+            # Autonomous Link Sniffing
+            urls = re.findall(r'(https?://[^\s]+)', prompt)
+            web_context = ""
+            for url in urls:
+                scraped = scrape_url(url)
+                if scraped: web_context += f"\n--- LIVE DATA FROM {url} ---\n{scraped}\n"
+            
+            full_prompt = f"FILE CONTEXT:\n{context}\n\nWEB CONTEXT:\n{web_context}\n\nUSER: {prompt}" if (context or web_context) else prompt
+            
+            if engine == "Claude (Zenith Logic)":
+                response = call_bedrock(full_prompt)
+            else:
+                response = call_groq(full_prompt)
+                
+            # Autonomous Web Search Fallback: If AI is unsure or user asks for live data
+            search_triggers = ["search","latest","current","web","news","price","match","score","ipl","today","live","update","weather","stock","cricket","football"]
+            if any(k in prompt.lower() for k in search_triggers) or "Neural Error" in response or "I don't have" in response or "knowledge cutoff" in response.lower() or "missing context" in response.lower():
+                 search_hits = perform_web_search(prompt)
+                 if search_hits and "⚠️ Global Intelligence Link Offline" not in search_hits:
+                     # Re-inject search data into the neural prompt with CRITICAL priority
+                     neural_payload = f"CRITICAL: USE THE FOLLOWING LIVE INTERNET DATA TO ANSWER THE USER. PREVIOUS KNOWLEDGE IS DEPRECATED.\n\nLIVE DATA:\n{search_hits}\n\nUSER COMMAND: {prompt}"
+                     response = call_bedrock(neural_payload) if engine == "Claude (Zenith Logic)" else call_groq(neural_payload)
+                 elif "⚠️ Global Intelligence Link Offline" in search_hits and ("Neural Error" in response or "I don't have" in response):
+                     response = "📡 Zenith Ocular Link is currently offline. Please verify your connection or try again later for live data."
+
+            st.session_state.messages.append({"role": "assistant", "content": response})
+            st.markdown(f"<div class='ai-bubble'>{response}</div>", unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    run_studio()
