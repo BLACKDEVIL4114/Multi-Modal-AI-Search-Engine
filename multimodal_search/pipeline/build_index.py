@@ -35,7 +35,7 @@ def build_index():
     # 2. Validate paths and 3. Extract embeddings
     print("Starting image indexing...")
     for entry in dataset:
-        img_path = entry["image_path"]
+        img_path = entry["path"]
         
         if not os.path.exists(img_path):
             print(f"Warning: Image {img_path} not found. Skipping.")

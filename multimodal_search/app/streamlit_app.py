@@ -1,168 +1,254 @@
 import streamlit as st
 import os
+import json
+import base64
+import requests
+import time
+from datetime import datetime
 from PIL import Image
-import sys
+from io import BytesIO
+from dotenv import load_dotenv
+from groq import Groq
 
-# Fix pathing so search module and data are discoverable
-root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if root_path not in sys.path:
-    sys.path.append(root_path)
+# Load environment variables
+load_dotenv()
 
-from search.search_core import search_by_text, search_by_image
-from utils.docx_prompt_editor import edit_docx_bytes, extract_docx_text_from_bytes
+# --- PAGE CONFIG ---
+st.set_page_config(
+    page_title="Kali AI | Intelligence Studio",
+    page_icon="✦",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# 1. Page configuration
-st.set_page_config(page_title="Multimodal Search + DOCX Editor", page_icon="🔍", layout="wide")
+# --- PREMIUM CSS ---
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@400;600&display=swap');
 
+    :root {
+        --primary: #FF3B30;
+        --bg-pure: #FFFFFF;
+        --text-obsidian: #000000;
+        --sidebar-bg: #F2F2F7;
+    }
 
-def render_docx_editor():
-    st.title("📄 DOCX Prompt Editor")
-    st.markdown("Upload a Word document, tell the editor what you want changed, and download the edited file.")
+    .stApp {
+        background-color: var(--bg-pure) !important;
+        color: var(--text-obsidian) !important;
+        font-family: 'Inter', sans-serif;
+    }
 
-    col_left, col_right = st.columns([1, 1])
-    with col_left:
-        uploaded_docx = st.file_uploader("Upload a DOCX file", type=["docx"])
-        prompt = st.text_area(
-            "Edit prompt",
-            placeholder='Example: replace "draft" with "final", add heading "Summary", and make the tone more professional.',
-            height=180,
-        )
-        author = st.text_input("Editor name", value="AI Assistant")
+    /* Brighter, Properly Visible Headings */
+    h1, h2, h3 {
+        font-family: 'Outfit', sans-serif;
+        font-weight: 700;
+        color: #000000 !important;
+    }
 
-    with col_right:
-        st.info("Tips")
-        st.write("- Use quoted text for precise replacements.")
-        st.write("- Examples: `replace \"old\" with \"new\"`, `add heading \"Next Steps\"`.")
-        st.write("- If the prompt is broad, the editor will try an LLM rewrite when credentials are configured.")
+    .main-title {
+        color: #FF3B30 !important;
+        -webkit-text-fill-color: #FF3B30 !important;
+        font-size: 2.8rem !important;
+        font-weight: 800 !important;
+    }
 
-    if uploaded_docx is not None:
-        file_bytes = uploaded_docx.getvalue()
-        with st.expander("Preview extracted text", expanded=False):
-            try:
-                st.text(extract_docx_text_from_bytes(file_bytes))
-            except Exception as exc:
-                st.warning(f"Could not extract text preview: {exc}")
+    /* FORCED BRIGHTNESS for Buttons */
+    .stButton>button {
+        background-color: #000000 !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        padding: 10px 24px !important;
+        border-radius: 12px !important;
+        font-weight: 700 !important;
+        width: 100% !important;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1) !important;
+    }
 
-    if st.button("Edit DOCX", use_container_width=True):
-        if uploaded_docx is None:
-            st.error("Please upload a DOCX file first.")
-            return
-        if not prompt.strip():
-            st.error("Please describe the edits you want.")
-            return
+    .stButton>button:hover {
+        background-color: #FF3B30 !important;
+        color: #FFFFFF !important;
+    }
+    
+    /* RADiant CLEAR CHAT BUTTON FIX */
+    div[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {
+        background: linear-gradient(90deg, #FF3B30, #FF7A70) !important;
+        color: white !important;
+        border: none !important;
+        font-weight: bold !important;
+        min-height: 50px !important;
+    }
 
-        with st.spinner("Applying edits..."):
-            try:
-                edited_bytes, result = edit_docx_bytes(
-                    uploaded_docx.getvalue(),
-                    prompt=prompt,
-                    author=author.strip() or "AI Assistant",
-                )
-                if result.strategy == "clarification":
-                    st.warning(result.summary)
-                else:
-                    st.success(result.summary)
-                st.caption(f"Strategy: {result.strategy}")
-                st.download_button(
-                    "Download edited DOCX",
-                    data=edited_bytes,
-                    file_name=os.path.splitext(uploaded_docx.name)[0] + "_edited.docx",
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True,
-                )
-                with st.expander("Applied instructions", expanded=False):
-                    if result.instructions:
-                        st.json(result.instructions)
-                    else:
-                        st.write("No structured instructions were returned. The editor used a rewrite or fallback strategy.")
-            except Exception as exc:
-                st.error(f"Could not edit the document: {exc}")
+    /* Sidebar - Crisp Modern Look */
+    [data-testid="stSidebar"] {
+        background-color: var(--sidebar-bg) !important;
+        border-right: 1px solid rgba(0,0,0,0.05) !important;
+    }
 
-def main():
-    workspace = st.sidebar.radio(
-        "Workspace",
-        ["Image Search", "DOCX Editor"],
-        index=0,
-    )
+    /* Chat Bubbles - High Contrast Day Mode */
+    .user-msg {
+        background: #007AFF !important;
+        color: #FFFFFF !important;
+        padding: 1.2rem;
+        border-radius: 18px;
+        margin-bottom: 1rem;
+        font-weight: 500;
+    }
 
-    if workspace == "DOCX Editor":
-        render_docx_editor()
-        return
+    .ai-msg {
+        background: #F2F2F7 !important;
+        color: #000000 !important;
+        padding: 1.2rem;
+        border-radius: 18px;
+        margin-bottom: 1rem;
+        border: 1px solid rgba(0,0,0,0.05) !important;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.02) !important;
+    }
 
-    st.title("🔍 Multimodal Image Search Engine")
-    st.markdown("Search for images using text descriptions or other images.")
+    /* Card Surfaces */
+    .feature-card {
+        background: #FFFFFF !important;
+        padding: 2rem;
+        border-radius: 20px;
+        border: 1px solid rgba(0,0,0,0.1) !important;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.04) !important;
+        transition: transform 0.2s ease;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-    # --- SIDEBAR SETTINGS ---
-    with st.sidebar:
-        st.header("⚙️ Search Settings")
-        top_k = st.slider("Number of results (Top-K)", min_value=1, max_value=20, value=5)
-        st.divider()
-        st.info("Performance: Using GPU acceleration if available.")
+# --- SESSION STATE ---
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
 
-    # 2. Check if index exists
-    index_path = os.path.join(root_path, "embeddings", "vector.index")
-    if not os.path.exists(index_path):
-        st.error(f"Please run `pipeline/build_index.py` first. Index not found at {index_path}")
-        return
-
-    # 3. Search Mode Toggle
-    search_mode = st.radio(
-        "Select Search Mode:",
-        ("Search by Text", "Search by Image"),
-        horizontal=True
-    )
-
-    results = []
-
-    # 4. IF Search by Text
-    if search_mode == "Search by Text":
-        query = st.text_input("Describe what you are looking for", placeholder="e.g. a cat on the floor")
-        search_btn = st.button("Search")
+# --- AI ENGINES ---
+def call_gemini(prompt, api_key, image_bytes=None):
+    if not api_key: return "⚠️ Please provide a Gemini API Key."
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    
+    parts = [{"text": prompt}]
+    if image_bytes:
+        encoded = base64.b64encode(image_bytes).decode('utf-8')
+        parts.append({
+            "inline_data": {
+                "mime_type": "image/jpeg",
+                "data": encoded
+            }
+        })
         
-        if (search_btn or query) and query:
-            with st.spinner("Searching..."):
-                results = search_by_text(query, top_k=top_k)
+    body = {"contents": [{"parts": parts}]}
+    try:
+        resp = requests.post(url, headers=headers, json=body)
+        data = resp.json()
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        return f"Error: {str(e)}"
 
-    # 5. IF Search by Image
-    else:
-        uploaded_file = st.file_uploader("Upload an image", type=["jpg", "png", "jpeg"])
-        if uploaded_file is not None:
-            try:
-                # Show preview
-                img = Image.open(uploaded_file)
-                st.image(img, caption="Query Image", width=200)
-                
-                search_btn = st.button("Search")
-                if search_btn:
-                    with st.spinner("Searching..."):
-                        results = search_by_image(img, top_k=top_k)
-            except Exception as e:
-                st.error(f"Could not open image: {e}")
+def call_groq(prompt, api_key):
+    if not api_key: return "⚠️ Please provide a Groq API Key."
+    client = Groq(api_key=api_key)
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_completion_tokens=4096,
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        return f"Error: {str(e)}"
 
-    # 6. Display results
-    if results:
-        st.subheader(f"Results (Showing top {len(results)})")
-        cols = st.columns(3)
-        for i, res in enumerate(results):
-            with cols[i % 3]:
-                # Fix path for image loading (join with root if it's relative)
-                img_display_path = res["image_path"]
-                if not os.path.isabs(img_display_path):
-                    img_display_path = os.path.join(root_path, img_display_path)
+# --- SIDEBAR ---
+with st.sidebar:
+    st.markdown("<h2 style='text-align:center;'>✦ KALI AI</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; opacity:0.7;'>intelligence Studio v3.5</p>", unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Show ONLY the Intelligence Engine selector as requested
+    model_choice = st.selectbox("Intelligence Engine", ["Gemini 2.0 (Fastest)", "Groq Llama 3.3 (Pro)", "Gemma 2 (HuggingFace)"])
+    
+    # Background Keys (Hidden from UI)
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    
+    st.markdown("---")
+    st.markdown("### 📁 Multimodal Input")
+    uploaded_file = st.file_uploader("Drop Image, PDF, or Code here", type=["png", "jpg", "jpeg", "pdf", "docx", "txt", "py", "xlsx"])
+    
+    if st.button("🗑️ Clear Conversation"):
+        st.session_state.messages = []
+        st.rerun()
 
-                if os.path.exists(img_display_path):
-                    try:
-                        display_img = Image.open(img_display_path)
-                        st.image(display_img, use_column_width=True)
-                        st.write(f"**Match: {int(res['score'] * 100)}%**")
-                        st.caption(f"Path: {os.path.basename(img_display_path)}")
-                    except:
-                        st.error("Error loading image file.")
-                else:
-                    st.warning(f"File not found: {img_display_path}")
-    elif "search_btn" in locals() and search_btn:
-        # 7. No results found
-        st.info("No results found. Try a different query.")
+    st.markdown("---")
+    st.markdown("<div class='sidebar-card'><b>Pro Tip:</b> Use Llama 3.3 for complex coding help and Gemini for image/visual discovery.</div>", unsafe_allow_html=True)
 
-if __name__ == "__main__":
-    main()
+# --- MAIN CHAT INTERFACE ---
+st.markdown("<h1 class='main-title'>Intelligence Studio</h1>", unsafe_allow_html=True)
+st.markdown("<p style='font-size:1.1rem; opacity:0.8;'>Ask questions, build code, and analyze documents in one place.</p>", unsafe_allow_html=True)
+
+# Display Messages
+for message in st.session_state.messages:
+    cls = "user-msg" if message["role"] == "user" else "ai-msg"
+    with st.chat_message(message["role"]):
+        st.markdown(f"<div class='{cls}'>{message['content']}</div>", unsafe_allow_html=True)
+        if "image" in message:
+            st.image(message["image"], width=300)
+
+# Input Box
+if prompt := st.chat_input("What are we building today?"):
+    # Add user message
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    with st.chat_message("user"):
+        st.markdown(f"<div class='user-msg'>{prompt}</div>", unsafe_allow_html=True)
+        img_bytes = None
+        if uploaded_file and uploaded_file.type.startswith("image/"):
+            st.image(uploaded_file, width=300)
+            img_bytes = uploaded_file.getvalue()
+            st.session_state.messages[-1]["image"] = img_bytes
+
+    # Generate AI response
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            response = ""
+            if "Gemini" in model_choice:
+                response = call_gemini(prompt, gemini_key, img_bytes)
+            elif "Groq" in model_choice:
+                full_prompt = prompt
+                if uploaded_file:
+                    full_prompt = f"Note: User uploaded {uploaded_file.name}. \n\n" + prompt
+                response = call_groq(full_prompt, groq_key)
+            else:
+                response = "HuggingFace Gemma integration is being initialized. Use Gemini or Groq."
+            
+            st.markdown(f"<div class='ai-msg'>{response}</div>", unsafe_allow_html=True)
+            st.session_state.messages.append({"role": "assistant", "content": response})
+
+# --- LANDING STATE ---
+if not st.session_state.messages:
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("""
+        <div class='feature-card'>
+        <h3 style='color:#FF4B4B !important;'>💻 Code Help</h3>
+        Ask for Python scripts, React components, or debugging help.
+        </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        st.markdown("""
+        <div class='feature-card'>
+        <h3 style='color:#1A73E8 !important;'>📄 Doc Analysis</h3>
+        Upload a PDF or DOCX to summarize or extract data.
+        </div>
+        """, unsafe_allow_html=True)
+    with col3:
+        st.markdown("""
+        <div class='feature-card'>
+        <h3 style='color:#00D1FF !important;'>🎨 Visual AI</h3>
+        Upload an image and ask "What is this?" or "Convert to HTML".
+        </div>
+        """, unsafe_allow_html=True)

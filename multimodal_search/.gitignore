@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.pyc
+.kali_history/
+scratch/
+*.npy
+*.index
+data/
+training_checkpoint.json
+app.py
+streamlit_app.py
+app/streamlit_app (1).py
