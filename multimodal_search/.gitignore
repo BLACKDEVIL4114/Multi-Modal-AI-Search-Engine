@@ -1,12 +1,28 @@
+# Environments
 .env
-__pycache__/
-*.pyc
-.kali_history/
+.venv
+env/
+venv/
+ENV/
+
+# Project Specific
+embeddings/
+data/images/
 scratch/
-*.npy
-*.index
-data/
 training_checkpoint.json
-app.py
-streamlit_app.py
-app/streamlit_app (1).py
+.kali_history/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Streamlit
+.streamlit/
+
+# OS
+.DS_Store
+Thumbs.db
