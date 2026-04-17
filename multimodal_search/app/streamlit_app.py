@@ -7,11 +7,33 @@ import time
 from datetime import datetime
 from PIL import Image
 from io import BytesIO
+from PyPDF2 import PdfReader
+from docx import Document
 from dotenv import load_dotenv
 from groq import Groq
 
-# Load environment variables
+# Load environment variables (Check root and app dir)
 load_dotenv()
+if not os.getenv("GEMINI_API_KEY"):
+    load_dotenv("../.env")
+
+# --- DOCUMENT PARSER ---
+def extract_text_from_file(file):
+    try:
+        if file.type == "application/pdf":
+            reader = PdfReader(file)
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text() + "\n"
+            return text
+        elif file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            doc = Document(file)
+            return "\n".join([para.text for para in doc.paragraphs])
+        elif file.type in ["text/plain", "text/x-python", "application/octet-stream"]:
+            return file.getvalue().decode("utf-8")
+        return ""
+    except Exception as e:
+        return f"Error reading file: {str(e)}"
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -124,38 +146,53 @@ if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
 
 # --- AI ENGINES ---
-def call_gemini(prompt, api_key, image_bytes=None):
-    if not api_key: return "⚠️ Please provide a Gemini API Key."
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-    headers = {"Content-Type": "application/json"}
-    
-    parts = [{"text": prompt}]
-    if image_bytes:
-        encoded = base64.b64encode(image_bytes).decode('utf-8')
-        parts.append({
-            "inline_data": {
-                "mime_type": "image/jpeg",
-                "data": encoded
-            }
-        })
-        
-    body = {"contents": [{"parts": parts}]}
-    try:
-        resp = requests.post(url, headers=headers, json=body)
-        data = resp.json()
-        return data["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception as e:
-        return f"Error: {str(e)}"
 
 def call_groq(prompt, api_key):
     if not api_key: return "⚠️ Please provide a Groq API Key."
     client = Groq(api_key=api_key)
     try:
         completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
+            model="llama-3.1-8b-instant",  # High-speed, high-quota engine
+            messages=[
+                {
+                    "role": "system", 
+                    "content": """You are the Absolute Intelligence Engine, an elite AI specialized in zero-error technical analysis and architecture. 
+                    
+                    INTERNAL AUDIT PROTOCOL:
+                    - Before responding, internally verify the structural integrity of your analysis.
+                    - REPETITION SHIELD: If the input document is highly repetitive or consists purely of template placeholders (like "NAME: NAME: NAME:"), do not repeat the noise. State clearly in the 'Overall Summary' that the document contains empty template repetition.
+                    - Ensure every claim is backed by the document content or proven technical principles.
+                    - Eliminate all conversational filler; provide only high-fidelity, data-driven content.
+
+                    MODE SELECTION:
+                    - ANALYSIS MODE: Triggered by documents/research. Follow the EXACT structure below.
+                    - CHAT MODE: Triggered by greetings. Warm, premium, and brief.
+
+                    IDEAL ANALYSIS STRUCTURE (STRICT):
+                    1. **Overall Summary**: A concise 2-3 sentence overview.
+                    2. 🧠 **Project Understanding**: Bulleted list of core project components.
+                    3. 👉 **Tech stack**: Clean list of technologies used.
+                    4. 📅 **Week-by-Week Breakdown**: 
+                       - Grouped weeks (e.g., Weeks 1–2, 3–4).
+                       - Tasks completed within those weeks.
+                       - 📌 **Insight**: A brief technical commentary on that phase.
+                    5. ✅ **Strengths of This Work**: Multi-bulleted list of positives.
+                    6. ⚠️ **Weaknesses / Improvements Needed**: Honest list of errors or missing pieces.
+                    7. 📊 **Final Evaluation (Honest)**: 
+                       - Technical Level: ⭐ rating
+                       - Completeness: ⭐ rating
+                       - Professional Quality: ⭐ rating
+                    8. 💡 **Suggestions to Make It Outstanding**: Actionable executive steps.
+                    9. 🧾 **One-Line Conclusion**: Final definitive verdict.
+
+                    Format with Bold Headers, Emojis, and extreme technical clarity.
+                    Tone: Mathematical, Precise, and World-Class."""
+                },
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.5,  # Balanced for both structure and loop prevention
             max_completion_tokens=4096,
+            top_p=1.0,
         )
         return completion.choices[0].message.content
     except Exception as e:
@@ -168,11 +205,11 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Show ONLY the Intelligence Engine selector as requested
-    model_choice = st.selectbox("Intelligence Engine", ["Gemini 2.0 (Fastest)", "Groq Llama 3.3 (Pro)", "Gemma 2 (HuggingFace)"])
+    # Show ONLY the working Intelligence Engines
+    model_choice = "Groq Llama 3.3 (Pro)"
+    st.info(f"🚀 Running on {model_choice}")
     
-    # Background Keys (Hidden from UI)
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    # Background Keys (Only Groq needed now)
     groq_key = os.getenv("GROQ_API_KEY", "")
     
     st.markdown("---")
@@ -184,7 +221,7 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("---")
-    st.markdown("<div class='sidebar-card'><b>Pro Tip:</b> Use Llama 3.3 for complex coding help and Gemini for image/visual discovery.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-card'><b>Pro Tip:</b> Use Llama 3.3 (Pro) for blazing fast coding help and reasoning.</div>", unsafe_allow_html=True)
 
 # --- MAIN CHAT INTERFACE ---
 st.markdown("<h1 class='main-title'>Intelligence Studio</h1>", unsafe_allow_html=True)
@@ -200,55 +237,47 @@ for message in st.session_state.messages:
 
 # Input Box
 if prompt := st.chat_input("What are we building today?"):
-    # Add user message
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    # CLEAN DISPLAY MESSAGE
+    display_user_msg = prompt if prompt else f"📄 Analyzing: {uploaded_file.name}"
+    st.session_state.messages.append({"role": "user", "content": display_user_msg})
     
     with st.chat_message("user"):
-        st.markdown(f"<div class='user-msg'>{prompt}</div>", unsafe_allow_html=True)
-        img_bytes = None
+        st.markdown(f"<div class='user-msg'>{display_user_msg}</div>", unsafe_allow_html=True)
         if uploaded_file and uploaded_file.type.startswith("image/"):
-            st.image(uploaded_file, width=300)
             img_bytes = uploaded_file.getvalue()
+            st.image(uploaded_file, width=300)
             st.session_state.messages[-1]["image"] = img_bytes
 
-    # Generate AI response
+    # GENERATE AI RESPONSE (With Background Prompt)
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            response = ""
-            if "Gemini" in model_choice:
-                response = call_gemini(prompt, gemini_key, img_bytes)
-            elif "Groq" in model_choice:
-                full_prompt = prompt
-                if uploaded_file:
-                    full_prompt = f"Note: User uploaded {uploaded_file.name}. \n\n" + prompt
-                response = call_groq(full_prompt, groq_key)
-            else:
-                response = "HuggingFace Gemma integration is being initialized. Use Gemini or Groq."
+        with st.spinner("Processing..."):
+            full_prompt = prompt
+            if uploaded_file:
+                file_content = extract_text_from_file(uploaded_file)
+                if file_content:
+                    full_prompt = f"""
+                    [ANALYZE MODE]
+                    FILE: {uploaded_file.name}
+                    CONTENT: {file_content[:18000]}
+                    USER QUERY: {prompt if prompt else "Analyze this document thoroughly and provide a detailed breakdown."}
+                    """
+                else:
+                    full_prompt = f"Extraction failed for {uploaded_file.name}. Respond to: {prompt}"
             
+            response = call_groq(full_prompt, groq_key)
             st.markdown(f"<div class='ai-msg'>{response}</div>", unsafe_allow_html=True)
             st.session_state.messages.append({"role": "assistant", "content": response})
 
 # --- LANDING STATE ---
 if not st.session_state.messages:
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown("""
-        <div class='feature-card'>
-        <h3 style='color:#FF4B4B !important;'>💻 Code Help</h3>
-        Ask for Python scripts, React components, or debugging help.
+    st.markdown("""
+    <div style='display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh; text-align: center;'>
+        <div style='width: 80px; height: 80px; background: #000; border-radius: 24px; display: flex; align-items: center; justify-content: center; margin-bottom: 2rem; box-shadow: 0 20px 50px rgba(0,0,0,0.1);'>
+            <span style='color: #FFF; font-size: 2rem;'>✦</span>
         </div>
-        """, unsafe_allow_html=True)
-    with col2:
-        st.markdown("""
-        <div class='feature-card'>
-        <h3 style='color:#1A73E8 !important;'>📄 Doc Analysis</h3>
-        Upload a PDF or DOCX to summarize or extract data.
-        </div>
-        """, unsafe_allow_html=True)
-    with col3:
-        st.markdown("""
-        <div class='feature-card'>
-        <h3 style='color:#00D1FF !important;'>🎨 Visual AI</h3>
-        Upload an image and ask "What is this?" or "Convert to HTML".
-        </div>
-        """, unsafe_allow_html=True)
+        <h1 style='font-size: 3.5rem; font-weight: 800; letter-spacing: -2px; margin-bottom: 0.5rem;'>Intelligence Studio</h1>
+        <p style='font-size: 1.2rem; opacity: 0.5; font-weight: 400;'>Ready to analyze, code, and assist you today.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# --- END OF APP ---
