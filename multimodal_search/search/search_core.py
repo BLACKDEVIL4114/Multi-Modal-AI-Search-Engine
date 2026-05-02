@@ -9,6 +9,9 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 from PIL import Image
 from transformers import CLIPProcessor, CLIPModel
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+EMBEDDINGS_DIR = os.path.join(BASE_DIR, "..", "embeddings")
+
 # --- GLOBAL MODEL CACHE ---
 _MODEL = None
 _PROCESSOR = None
@@ -43,16 +46,20 @@ def search_by_text(query, top_k=3):
             text_embedding = text_embedding / norm
             
         # Load indexed data
-        index_path = os.path.join("embeddings", "vector.index")
-        paths_path = os.path.join("embeddings", "image_paths.npy")
+        index_path = os.path.join(EMBEDDINGS_DIR, "vector.index")
+        paths_path = os.path.join(EMBEDDINGS_DIR, "image_paths.npy")
         
         if not os.path.exists(index_path) or not os.path.exists(paths_path):
             print("Error: Index or paths file missing.")
             return []
             
         # 📂 LOAD PERSISTENT INDEX
-        index = faiss.read_index(index_path)
-        image_paths = np.load(paths_path)
+        try:
+            index = faiss.read_index(index_path)
+            image_paths = np.load(paths_path)
+        except Exception as e:
+            print(f"Failed to load FAISS index: {e}")
+            return []
         
         # Search
         scores, indices = index.search(text_embedding, top_k)
@@ -92,16 +99,20 @@ def search_by_image(uploaded_image, top_k=3):
             query_embedding = query_embedding / norm
             
         # Load indexed data
-        index_path = os.path.join("embeddings", "vector.index")
-        paths_path = os.path.join("embeddings", "image_paths.npy")
+        index_path = os.path.join(EMBEDDINGS_DIR, "vector.index")
+        paths_path = os.path.join(EMBEDDINGS_DIR, "image_paths.npy")
         
         if not os.path.exists(index_path) or not os.path.exists(paths_path):
             print("Error: Index or paths file missing.")
             return []
             
         # 📂 LOAD PERSISTENT INDEX
-        index = faiss.read_index(index_path)
-        image_paths = np.load(paths_path)
+        try:
+            index = faiss.read_index(index_path)
+            image_paths = np.load(paths_path)
+        except Exception as e:
+            print(f"Failed to load FAISS index: {e}")
+            return []
         
         # Search
         scores, indices = index.search(query_embedding, top_k)

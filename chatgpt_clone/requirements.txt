@@ -8,3 +8,5 @@ PyPDF2
 sentence-transformers
 faiss-cpu
 streamlit
+streamlit-mic-recorder
+google-generativeai

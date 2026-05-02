@@ -34,34 +34,42 @@ def build_index():
 
     # 2. Validate paths and 3. Extract embeddings
     print("Starting image indexing...")
-    for entry in dataset:
-        img_path = entry["path"]
+    BATCH_SIZE = 32
+    all_entries = [e for e in dataset if os.path.exists(e["path"])]
+    
+    for i in range(0, len(all_entries), BATCH_SIZE):
+        batch = all_entries[i:i+BATCH_SIZE]
+        images = []
+        batch_paths = []
+        for entry in batch:
+            try:
+                img = Image.open(entry["path"]).convert("RGB")
+                images.append(img)
+                batch_paths.append(entry["path"])
+            except Exception as e:
+                print(f"Error loading {entry['path']}: {e}")
+                continue
         
-        if not os.path.exists(img_path):
-            print(f"Warning: Image {img_path} not found. Skipping.")
+        if not images:
             continue
             
         try:
-            image = Image.open(img_path).convert("RGB")
-            inputs = processor(images=image, return_tensors="pt").to(device)
-            
+            inputs = processor(images=images, return_tensors="pt", padding=True).to(device)
             with torch.no_grad():
                 image_features = model.get_image_features(**inputs)
             
-            # Move back to CPU for numpy conversion
-            embedding = image_features.cpu().numpy().flatten()
-            
-            # Normalize the embedding vector
-            norm = np.linalg.norm(embedding)
-            if norm > 0:
-                embedding = embedding / norm
-                
-            embeddings.append(embedding)
-            valid_paths.append(img_path)
-            
+            batch_embeddings = image_features.cpu().numpy().astype('float32')
+            for j, emb in enumerate(batch_embeddings):
+                norm = np.linalg.norm(emb)
+                if norm > 0:
+                    emb = emb / norm
+                embeddings.append(emb)
+                valid_paths.append(batch_paths[j])
         except Exception as e:
-            print(f"Error processing {img_path}: {e}")
+            print(f"Batch error: {e}")
             continue
+        
+        print(f"Indexed {min(i+BATCH_SIZE, len(all_entries))}/{len(all_entries)} images...")
 
     if not embeddings:
         print("No images were indexed. Check your images directory.")

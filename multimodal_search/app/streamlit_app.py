@@ -1,4 +1,5 @@
 import streamlit as st
+import html
 import os
 from groq import Groq
 from dotenv import load_dotenv
@@ -140,7 +141,8 @@ def call_groq(prompt):
         
         # Token Surgical Ingestion: Limit context size to save quota
         if len(prompt) > 8000:
-            prompt = prompt[:8000] + "\n...[CONTEXT TRUNCATED TO SAVE QUOTA]..."
+            prompt = prompt[:8000] + "\n...[CONTEXT TRUNCATED]..."
+            st.warning("⚠️ Your document was too large and has been trimmed to fit the model's context window.")
             
         for model in models:
             try:
@@ -207,7 +209,7 @@ def perform_web_search(query):
     # Layer 1: Google Precision Intelligence
     try:
         search_query = query
-        if q_lower.startswith("urrent"): search_query = "current " + query[6:]
+        if q_lower.startswith("current"): search_query = query
         
         search_results = list(gsearch(search_query, num_results=5, advanced=True))
         for idx, url in enumerate(search_results):
@@ -312,6 +314,10 @@ def run_studio():
     if uploaded_file:
         with st.spinner("🧠 Ingesting Multi-Modal Data..."):
             context = extract_text(uploaded_file)
+            MAX_BYTES = 5 * 1024 * 1024  # 5MB
+            if uploaded_file.size > MAX_BYTES:
+                st.error("❌ File too large. Maximum allowed size is 5MB.")
+                context = ""
 
     # Welcome Hero (Internal LONELY remover)
     if not st.session_state.messages:
@@ -343,40 +349,39 @@ def run_studio():
     # Chat Interface
     for message in st.session_state.messages:
         div_class = "user-bubble" if message["role"] == "user" else "ai-bubble"
-        st.markdown(f"<div class='{div_class}'>{message['content']}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='{div_class}'>{html.escape(message['content'])}</div>", unsafe_allow_html=True)
 
     if prompt := st.chat_input("Command the Zenith..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
-        st.markdown(f"<div class='user-bubble'>{prompt}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='user-bubble'>{html.escape(prompt)}</div>", unsafe_allow_html=True)
 
         with st.spinner("📡 Orchestrating Neural Response..."):
-            # Autonomous Link Sniffing
             urls = re.findall(r'(https?://[^\s]+)', prompt)
             web_context = ""
             for url in urls:
                 scraped = scrape_url(url)
-                if scraped: web_context += f"\n--- LIVE DATA FROM {url} ---\n{scraped}\n"
+                if scraped:
+                    web_context += f"\n--- LIVE DATA FROM {url} ---\n{scraped}\n"
+
+            search_triggers = ["search","latest","current","web","news","price","match","score","ipl","today","live","update","weather","stock","cricket","football"]
             
-            full_prompt = f"FILE CONTEXT:\n{context}\n\nWEB CONTEXT:\n{web_context}\n\nUSER: {prompt}" if (context or web_context) else prompt
-            
+            # Search FIRST before calling AI
+            search_hits = ""
+            if any(k in prompt.lower() for k in search_triggers):
+                search_hits = perform_web_search(prompt)
+
+            if search_hits and "⚠️ Global Intelligence Link Offline" not in search_hits:
+                full_prompt = f"CRITICAL: USE THE FOLLOWING LIVE INTERNET DATA TO ANSWER THE USER. PREVIOUS KNOWLEDGE IS DEPRECATED.\n\nLIVE DATA:\n{search_hits}\n\nFILE CONTEXT:\n{context}\n\nWEB CONTEXT:\n{web_context}\n\nUSER COMMAND: {prompt}"
+            else:
+                full_prompt = f"FILE CONTEXT:\n{context}\n\nWEB CONTEXT:\n{web_context}\n\nUSER: {prompt}" if (context or web_context) else prompt
+
             if engine == "Claude (Zenith Logic)":
                 response = call_bedrock(full_prompt)
             else:
                 response = call_groq(full_prompt)
-                
-            # Autonomous Web Search Fallback: If AI is unsure or user asks for live data
-            search_triggers = ["search","latest","current","web","news","price","match","score","ipl","today","live","update","weather","stock","cricket","football"]
-            if any(k in prompt.lower() for k in search_triggers) or "Neural Error" in response or "I don't have" in response or "knowledge cutoff" in response.lower() or "missing context" in response.lower():
-                 search_hits = perform_web_search(prompt)
-                 if search_hits and "⚠️ Global Intelligence Link Offline" not in search_hits:
-                     # Re-inject search data into the neural prompt with CRITICAL priority
-                     neural_payload = f"CRITICAL: USE THE FOLLOWING LIVE INTERNET DATA TO ANSWER THE USER. PREVIOUS KNOWLEDGE IS DEPRECATED.\n\nLIVE DATA:\n{search_hits}\n\nUSER COMMAND: {prompt}"
-                     response = call_bedrock(neural_payload) if engine == "Claude (Zenith Logic)" else call_groq(neural_payload)
-                 elif "⚠️ Global Intelligence Link Offline" in search_hits and ("Neural Error" in response or "I don't have" in response):
-                     response = "📡 Zenith Ocular Link is currently offline. Please verify your connection or try again later for live data."
 
             st.session_state.messages.append({"role": "assistant", "content": response})
-            st.markdown(f"<div class='ai-bubble'>{response}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='ai-bubble'>{html.escape(response)}</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     run_studio()

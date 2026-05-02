@@ -1,6 +1,7 @@
 import streamlit as st
 st.set_page_config(page_title="Kali AI | Intelligence Studio v2", page_icon="✦", layout="wide")
 
+import google.generativeai as genai
 import os
 import time
 import json
@@ -23,14 +24,18 @@ try:
     from dotenv import load_dotenv
     import requests
     from bs4 import BeautifulSoup
+    from streamlit_mic_recorder import mic_recorder
     load_dotenv()
 except ImportError:
-    st.error("⚠️ **Initialization Failure:** Dependencies missing. Run: `pip install groq python-dotenv requests beautifulsoup4 message-transformers faiss-cpu`")
+    st.error("⚠️ **Initialization Failure:** Dependencies missing. Run: `pip install groq python-dotenv requests beautifulsoup4 message-transformers faiss-cpu streamlit-mic-recorder`")
     st.stop()
 
 # ── Handshake Synchronization ─────────────────────
 if 'initialized' not in st.session_state:
     st.session_state.initialized = True
+    if 'voice_prompt' not in st.session_state: st.session_state.voice_prompt = None
+    if 'edit_index' not in st.session_state: st.session_state.edit_index = None
+    if 'edit_text' not in st.session_state: st.session_state.edit_text = ""
 
 # ── Persistence Engine ──────────────────────────────
 HISTORY_DIR = ".kali_history"
@@ -89,13 +94,28 @@ def autonomous_search(query):
         
         soup = BeautifulSoup(response.content, 'html.parser')
         results = []
-        for result in soup.find_all('div', class_='result__body')[:5]:
-            title = result.find('a', class_='result__a').get_text()
-            snippet = result.find('a', class_='result__snippet').get_text()
+        links_to_scrape = []
+        
+        for result in soup.find_all('div', class_='result__body')[:8]:
+            title = result.find('a', class_='result__a').get_text().strip()
+            snippet = result.find('a', class_='result__snippet').get_text().strip()
             link = result.find('a', class_='result__a')['href']
             results.append(f"Title: {title}\nSummary: {snippet}\nSource: {link}\n")
+            if len(links_to_scrape) < 3:
+                links_to_scrape.append(link)
         
-        return "\n".join(results)
+        # Deep Intelligence: Scrape the top 5 links for full context
+        deep_context = []
+        for i, link in enumerate(links_to_scrape[:5]):
+            st.write(f"🔬 Deep Analyzing: {link[:50]}...")
+            content = fetch_web_content(link)
+            if content and "SECURITY BLOCK" not in content and len(content) > 200:
+                deep_context.append(f"--- FULL CONTENT FROM SOURCE {i+1} ({link}) ---\n{content[:4000]}\n")
+        
+        final_context = "\n".join(results) + "\n\n" + "\n".join(deep_context)
+        if len(final_context) < 100:
+            return "No reliable web data found. Please try a different query."
+        return final_context
     except Exception as e:
         return f"Search Error: {str(e)}"
 
@@ -104,22 +124,37 @@ def fetch_web_content(url):
     if not is_safe_url(url):
         return "⚠️ [SECURITY BLOCK] Access to internal, local, or unsafe resources is prohibited."
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(url, headers=headers, timeout=12)
+        # Modern Browser Fingerprint
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://www.google.com/'
+        }
+        response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
         
+        # Handle Word Documents
         if url.lower().endswith('.docx') or 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' in response.headers.get('Content-Type', ''):
             st.session_state.template_bytes = response.content
             return "✅ [BINARY CAPTURED] Remote document integrated."
         
         soup = BeautifulSoup(response.content, 'html.parser')
-        for script in soup(["script", "style"]): script.extract()
-        text = soup.get_text()
-        lines = (line.strip() for line in text.splitlines())
-        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-        return "\n".join(chunk for chunk in chunks if chunk)[:15000]
+        
+        # Aggressive Noise Removal for "Perfect" Results
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside", "form", "button", "svg"]):
+            tag.decompose()
+            
+        # Extract clean text with semantic spacing
+        text = soup.get_text(separator='\n')
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        
+        # Filter out very short lines that might be menu items or artifacts
+        clean_text = "\n".join([line for line in lines if len(line) > 20 or (any(c.isdigit() for c in line) and len(line) > 5)])
+        
+        return clean_text[:15000]
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Web Access Error: {str(e)}"
 
 # --- KALI v2.0 ARCHITECTURE: RADICAL INITIALIZATION ---
 if "messages" not in st.session_state:
@@ -127,28 +162,40 @@ if "messages" not in st.session_state:
 if "chat_id" not in st.session_state:
     st.session_state.chat_id = "kali_" + str(int(time.time()))
 
-load_dotenv()
-DEFAULT_API_KEY = os.getenv("GROQ_API_KEY")
+# --- HYPER-RESILIENT SYNC ---
+load_dotenv(override=True) 
+DEFAULT_API_KEY = os.getenv("GROQ_API_KEY", "")
+DEFAULT_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
 
 st.markdown("""
 <style>
-    /* 1. Global Midnight Slate Foundation */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700&display=swap');
+
     :root {
-        --bg-deep: #12121e;
-        --sidebar-bg: #0f111a;
-        --accent-primary: #7c3aed;
-        --accent-secondary: #c4b5fd;
-        --border-subtle: #2d2d3f;
-        --text-bright: #e2e8f0;
+        --bg-deep: #0a0a0f;
+        --sidebar-bg: #050508;
+        --accent-primary: #8b5cf6;
+        --accent-secondary: #c084fc;
+        --border-subtle: rgba(255, 255, 255, 0.05);
+        --text-bright: #f8fafc;
+        --glass-bg: rgba(15, 15, 25, 0.7);
+        --glass-border: rgba(255, 255, 255, 0.1);
     }
 
+    /* 1. Global Midnight Slate Foundation */
     [data-testid="stAppViewContainer"], .stApp {
-        background: radial-gradient(circle at 50% 10%, #1a1a2e 0%, var(--bg-deep) 70%) !important;
+        background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #0a0a0f 100%) !important;
         color: var(--text-bright) !important;
+        font-family: 'Inter', sans-serif !important;
     }
     
     [data-testid="stHeader"] {
         background: transparent !important;
+    }
+
+    h1, h2, h3 {
+        font-family: 'Outfit', sans-serif !important;
+        letter-spacing: -0.02em !important;
     }
 
     /* 2. Zero-Flicker Sidebar */
@@ -160,23 +207,24 @@ st.markdown("""
     .sb-logo-v2 {
         display: flex;
         align-items: center;
-        gap: 12px;
-        padding: 5px 0 20px;
-        border-bottom: 0.5px solid #222;
-        margin-bottom: 20px;
+        gap: 14px;
+        padding: 20px 0;
+        border-bottom: 1px solid var(--border-subtle);
+        margin-bottom: 25px;
     }
 
     .logo-mark-v2 {
-        width: 36px;
-        height: 36px;
-        background: linear-gradient(135deg, #6c63ff, #a855f7);
-        border-radius: 10px;
+        width: 42px;
+        height: 42px;
+        background: linear-gradient(135deg, #8b5cf6, #d946ef);
+        border-radius: 12px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 18px;
+        font-size: 22px;
         color: white;
-        box-shadow: 0 0 15px rgba(108, 99, 255, 0.3);
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+        font-family: 'Outfit', sans-serif;
     }
 
     /* 3. High-Fidelity Canvas */
@@ -184,15 +232,15 @@ st.markdown("""
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 50px 0;
+        padding: 80px 0 40px;
         position: relative;
     }
 
     .bg-glow-v2 {
         position: absolute;
-        width: 700px;
-        height: 700px;
-        background: radial-gradient(circle, rgba(108, 99, 255, 0.08) 0%, transparent 70%);
+        width: 800px;
+        height: 800px;
+        background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
@@ -202,80 +250,152 @@ st.markdown("""
 
     /* 4. Chat & Input Refinement */
     [data-testid="stChatMessage"] {
-        background-color: #1e1e2f !important;
-        border: 1px solid #2d2d3f !important;
-        border-radius: 12px !important;
-        margin-bottom: 20px !important;
+        background-color: var(--glass-bg) !important;
+        backdrop-filter: blur(12px) !important;
+        border: 1px solid var(--glass-border) !important;
+        border-radius: 20px !important;
+        margin-bottom: 24px !important;
+        padding: 1.5rem !important;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3) !important;
     }
 
-    /* Global Button Overrides (Flicker-Free) */
+    [data-testid="stChatMessageContent"] {
+        color: #f1f5f9 !important;
+        font-size: 1.05rem !important;
+        line-height: 1.6 !important;
+    }
+
+    [data-testid="stChatMessageContent"] p, [data-testid="stChatMessageContent"] li, [data-testid="stChatMessageContent"] span {
+        color: #f1f5f9 !important;
+    }
+
+    /* Action Buttons (Copy/Edit) Styling */
+    .stChatActionRow {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    div[data-testid="column"] button {
+        background: rgba(255,255,255,0.05) !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        border-radius: 6px !important;
+        padding: 2px 6px !important;
+        font-size: 12px !important;
+        color: #94a3b8 !important;
+        min-height: 24px !important;
+        line-height: 1 !important;
+    }
+
+    div[data-testid="column"] button:hover {
+        background: rgba(139, 92, 246, 0.2) !important;
+        border-color: rgba(139, 92, 246, 0.4) !important;
+        color: white !important;
+    }
+
+    /* Global Button Overrides */
     .stButton>button, .stDownloadButton>button {
-        background-color: #141414 !important;
-        color: #c4b5fd !important;
-        border: 1px solid #2d1f5e !important;
-        border-radius: 10px !important;
-        transition: 0.3s !important;
+        background: rgba(139, 92, 246, 0.1) !important;
+        color: white !important;
+        border: 1px solid rgba(139, 92, 246, 0.2) !important;
+        border-radius: 12px !important;
+        padding: 0.6rem 1.2rem !important;
+        font-weight: 500 !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        text-transform: none !important;
     }
     
     .stButton>button:hover {
-        background-color: #1c1023 !important;
-        border-color: #6c63ff !important;
-        color: white !important;
-        box-shadow: 0 0 15px rgba(108, 99, 255, 0.2) !important;
+        background: rgba(139, 92, 246, 0.2) !important;
+        border-color: #8b5cf6 !important;
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.3) !important;
+        transform: translateY(-2px);
     }
 
     /* Sidebar Specific Contrast */
     [data-testid="stSidebar"] .stButton>button {
-        background-color: #0a0a0a !important;
-        border: 1px solid #1a1a1a !important;
-        color: #a78bfa !important;
+        background-color: transparent !important;
+        border: 1px solid transparent !important;
+        color: #64748b !important;
         text-align: left !important;
         font-size: 13px !important;
-        padding: 10px 15px !important;
+        padding: 6px 12px !important;
         width: 100% !important;
+        margin-bottom: 0px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        line-height: 1.1 !important;
+        min-height: 32px !important;
+        border-radius: 8px !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    [data-testid="stSidebar"] .stButton {
+        margin-bottom: -10px !important;
+        padding-bottom: 0px !important;
     }
     
     [data-testid="stSidebar"] .stButton>button:hover {
-        border-color: #6c63ff !important;
-        color: white !important;
+        background: rgba(139, 92, 246, 0.08) !important;
+        color: #c084fc !important;
+    }
+
+    [data-testid="stSidebar"] .stButton>button:active {
+        background: rgba(139, 92, 246, 0.1) !important;
     }
 
     /* Precision Input Bar */
     .stChatInputContainer {
-        border-radius: 14px !important;
-        background-color: #141414 !important;
-        border: 1px solid #222 !important;
-        padding: 8px !important;
+        border-radius: 18px !important;
+        background-color: rgba(15, 15, 25, 0.95) !important;
+        border: 1px solid var(--glass-border) !important;
+        padding: 10px !important;
+        backdrop-filter: blur(20px) !important;
     }
     
     .stChatInputContainer:focus-within {
-        border-color: #6c63ff !important;
+        border-color: #8b5cf6 !important;
+        box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2) !important;
     }
 
     /* Logic Chips */
     .chip-v2 {
-        background: #141414;
-        border: 1px solid #222;
-        border-radius: 20px;
-        padding: 8px 18px;
-        font-size: 13px;
-        color: #777;
-        margin: 5px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 10px 20px;
+        font-size: 14px;
+        color: #e2e8f0;
+        margin: 6px;
         display: inline-block;
-        transition: 0.2s;
+        transition: all 0.2s ease;
         cursor: pointer;
     }
     .chip-v2:hover {
-        background: #1c1023;
-        border-color: #6c63ff;
-        color: #c4b5fd;
+        background: rgba(139, 92, 246, 0.1);
+        border-color: #8b5cf6;
+        color: #c084fc;
+        transform: scale(1.05);
     }
 
-    [data-testid="stChatMessageContent"] {
-        background-color: transparent !important;
+    /* Voice Intelligence Premium Styling */
+    .voice-card {
+        background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(217, 70, 239, 0.05));
+        border: 1px solid rgba(139, 92, 246, 0.2);
+        border-radius: 16px;
+        padding: 20px;
+        margin-top: 15px;
     }
-    .stMarkdown div p {
-        color: var(--text-bright) !important;
+
+    /* Pulse Badge Animation */
+    @keyframes pulse {
+        0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); }
+        70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(139, 92, 246, 0); }
+        100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
+    }
+    .pulse-badge {
+        animation: pulse 2s infinite;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -300,12 +420,12 @@ with st.sidebar:
             if key in st.session_state: del st.session_state[key]
         st.rerun()
 
-    st.markdown("<div style='font-size:11px; color:#444; margin:15px 0 10px; font-weight:bold; letter-spacing:1px;'>RECENT INTELLIGENCE</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:11px; color:#64748b; margin:25px 0 12px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase;'>Recent Intelligence</div>", unsafe_allow_html=True)
     
     # Render History with v2 Styling (Shield Re-integrated)
     try:
         sorted_hist = sorted(all_history.items(), key=lambda x: x[1].get('timestamp', 0), reverse=True)
-        for cid, data in sorted_hist[:8]:
+        for cid, data in sorted_hist[:10]:
             title = data.get('title', 'Untitled Intelligence')
             is_active = (cid == st.session_state.chat_id)
             btn_label = f"✦ {title}" if is_active else f"  {title}"
@@ -313,16 +433,33 @@ with st.sidebar:
                 st.session_state.messages = data['messages']
                 st.session_state.chat_id = cid
                 st.rerun()
+        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
     except Exception as e:
         st.write("Recent Intelligence: [Syncing...]")
 
     st.divider()
-    auth_key = st.text_input("Engine Key", value=DEFAULT_API_KEY, type="password") if not DEFAULT_API_KEY else DEFAULT_API_KEY
+    model_option = st.selectbox("Neural Architecture", [
+        "llama-3.3-70b-versatile", 
+        "llama-3.1-70b-versatile", 
+        "mixtral-8x7b-32768",
+        "gemini-2.0-flash (Premium Grounding)"
+    ])
+    
+    # Dynamic Key Synchronization
+    if st.button("🔄 Sync Neural Keys", use_container_width=True):
+        load_dotenv(override=True)
+        st.rerun()
+        
+    auth_key = st.text_input("Groq Engine Key", value=os.getenv("GROQ_API_KEY", ""), type="password")
+    gemini_key = st.text_input("Gemini Engine Key", value=os.getenv("GEMINI_API_KEY", ""), type="password")
+    
+    if gemini_key:
+        genai.configure(api_key=gemini_key)
     
     st.markdown(f"""
-        <div style='position:fixed; bottom:20px; width:220px; padding:0 20px; display:flex; align-items:center; gap:12px;'>
-            <div style='width:34px; height:34px; border-radius:10px; background:#18122b; border:1px solid #2d1f5e; color:#a78bfa; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:14px;'>✦</div>
-            <div><b style='color:#fff; font-size:13px;'>Executive</b><br><span style='color:#4ade80; font-size:10px;'>● System Optimal</span></div>
+        <div style='padding: 20px 0; border-top: 1px solid var(--border-subtle); margin-top: 20px; display:flex; align-items:center; gap:12px;'>
+            <div style='width:34px; height:34px; border-radius:10px; background:#1e1b4b; border:1px solid rgba(139, 92, 246, 0.3); color:#a78bfa; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:14px; box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);'>✦</div>
+            <div><b style='color:#fff; font-size:13px;'>Executive Control</b><br><span style='color:#4ade80; font-size:10px;'>● Neural Link Optimal</span> <span style='color:#60a5fa; font-size:10px; margin-left:10px;'>🌐 Web Online</span></div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -338,15 +475,19 @@ if not st.session_state.messages:
     st.markdown("""
         <div class="hero-v2">
             <div class="bg-glow-v2"></div>
-            <div style="width:70px; height:70px; border-radius:20px; background:#18122b; border:1px solid #2d1f5e; display:flex; align-items:center; justify-content:center; font-size:32px; margin-bottom:15px; z-index:1;">✦</div>
-            <h1 style="font-size:32px; font-weight:500; color:#e8e8e8; margin-top:0; z-index:1;">Hello, I'm <span style="color:#a78bfa">Kali</span></h1>
-            <p style="color:#444; font-size:12px; text-transform:uppercase; letter-spacing:1.5px; margin-top:-10px; z-index:1;">Surgical Assistant Intelligence · Ready</p>
+            <div class="logo-mark-v2" style="width:80px; height:80px; font-size:42px; margin-bottom:25px; z-index:1; border-radius:18px;">✦</div>
+            <h1 style="font-size:54px; font-weight:800; color:#f8fafc; margin-top:0; z-index:1; text-align:center; line-height:1.1;">
+                Meet <span style="background: linear-gradient(135deg, #8b5cf6, #d946ef); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Kali AI</span>
+            </h1>
+            <p style="color:#64748b; font-size:14px; text-transform:uppercase; letter-spacing:3px; margin-top:5px; z-index:1; font-weight:600;">
+                Advanced Multi-Modal Search Engine
+            </p>
         </div>
-        <div style="text-align:center; position:relative; z-index:1;">
-            <div class="chip-v2">✏️ Draft content</div>
-            <div class="chip-v2">🔍 Surgical edit</div>
-            <div class="chip-v2">📊 Analyze complex XML</div>
-            <div class="chip-v2">💡 Strategic plan</div>
+        <div style="text-align:center; position:relative; z-index:1; margin-bottom:50px;">
+            <div class="chip-v2">✨ Creative Synthesis</div>
+            <div class="chip-v2">🔬 Surgical Extraction</div>
+            <div class="chip-v2">🌐 Real-time Intelligence</div>
+            <div class="chip-v2">🎙️ Voice Command</div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -706,12 +847,42 @@ def fetch_knowledge(query, idx, chunks):
 # --- LEGACY HEADER PURGED (v2.0 Logic Engaged) ---
 st.markdown("<br>", unsafe_allow_html=True)
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
+# ── Neural Chat Core ────────────────────────────
 for i, msg in enumerate(st.session_state.messages):
-    with st.chat_message(msg["role"]):
+    role = "user" if msg["role"] == "user" else "assistant"
+    with st.chat_message(role):
         st.markdown(msg["content"])
+        
+        if role == "user":
+            col1, col2, _ = st.columns([0.05, 0.05, 0.9])
+            with col1:
+                if st.button("📋", key=f"cp_{i}", help="Copy message"):
+                    js_text = msg["content"].replace('"', '\\"').replace("\n", "\\n")
+                    st.write(f'<script>navigator.clipboard.writeText("{js_text}");</script>', unsafe_allow_html=True)
+                    st.toast("Copied to clipboard!", icon="✅")
+            with col2:
+                if st.button("✏️", key=f"ed_{i}", help="Edit & Resend"):
+                    st.session_state.edit_index = i
+                    st.session_state.edit_text = msg["content"]
+                    st.rerun()
+
+# ── Edit Overlay ────────────────────────────────
+if st.session_state.get('edit_index') is not None:
+    with st.container():
+        st.markdown("### ✏️ Edit Intelligence Query")
+        new_text = st.text_area("Update your query:", value=st.session_state.edit_text, height=100)
+        ecol1, ecol2 = st.columns(2)
+        with ecol1:
+            if st.button("🚀 Resend Neural Query", use_container_width=True):
+                # Remove everything after this message and resend
+                st.session_state.messages = st.session_state.messages[:st.session_state.edit_index]
+                st.session_state.active_prompt = new_text
+                st.session_state.edit_index = None
+                st.rerun()
+        with ecol2:
+            if st.button("❌ Cancel", use_container_width=True):
+                st.session_state.edit_index = None
+                st.rerun()
 
 # ── Unit Fusion (Combined Bar) ────────────────
 st.markdown("<br><br>", unsafe_allow_html=True)
@@ -765,18 +936,54 @@ with footer_cols[0]:
                 if chunks:
                     st.session_state.index, st.session_state.chunks = build_vector_store(chunks)
                     st.toast(f"Knowledge Matrix Synced ({len(chunks)} nodes)")
+        
+        st.markdown("---")
+        st.markdown("<div class='voice-card'>", unsafe_allow_html=True)
+        st.markdown("### 🎙️ Voice Intelligence")
+        audio = mic_recorder(
+            start_prompt="⏺️ Start Recording",
+            stop_prompt="⏹️ Stop Recording",
+            just_once=False,
+            use_container_width=True,
+            key="voice_recorder"
+        )
+        
+        if audio:
+            if "last_audio_bytes" not in st.session_state or st.session_state.last_audio_bytes != audio['bytes']:
+                st.session_state.last_audio_bytes = audio['bytes']
+                with st.spinner("🎙️ Transcribing Voice..."):
+                    try:
+                        audio_bio = io.BytesIO(audio['bytes'])
+                        audio_bio.name = "recording.wav"
+                        
+                        transcription = client.audio.transcriptions.create(
+                            file=audio_bio,
+                            model="whisper-large-v3",
+                        )
+                        st.session_state.voice_prompt = transcription.text
+                        st.toast(f"✅ Voice Captured: {transcription.text[:50]}...")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Voice Error: {str(e)}")
+        st.markdown("</div>", unsafe_allow_html=True)
 
 with footer_cols[1]:
     prompt = st.chat_input("Ask anything...")
 
-if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# ── Active Intelligence Processing ──────────
+active_prompt = prompt if prompt else st.session_state.get("voice_prompt")
+
+if active_prompt:
+    if st.session_state.get("voice_prompt"):
+        st.session_state.voice_prompt = None # Clear the buffer
+
+    st.session_state.messages.append({"role": "user", "content": active_prompt})
     save_chat_to_disk(st.session_state.chat_id, st.session_state.messages)
-    with st.chat_message("user"): st.markdown(prompt)
+    with st.chat_message("user"): st.markdown(active_prompt)
 
     # ── Web Detection & Extraction ────────────────
     web_context = ""
-    links = re.findall(r'https?://[^\s<>"]+|www\.[^\s<>"]+', prompt)
+    links = re.findall(r'https?://[^\s<>"]+|www\.[^\s<>"]+', active_prompt)
     
     if links:
         with st.status("🌐 Consulting Web Matrix...", expanded=True) as status:
@@ -785,17 +992,42 @@ if prompt:
                 content = fetch_web_content(link)
                 web_context += f"\n--- WEB SOURCE: {link} ---\n{content}\n"
             status.update(label="✅ Web Intelligence Synced", state="complete", expanded=False)
-    elif "?" in prompt or any(w in prompt.lower() for w in ["search", "who is", "latest", "news", "what is"]):
+    elif "?" in active_prompt or any(w in active_prompt.lower() for w in ["search", "who is", "latest", "news", "what is", "current", "today", "weather", "stock", "price", "how many"]):
         with st.status("🧠 Learning from Internet...", expanded=True) as status:
-            st.write(f"Querying Open Web: {prompt}")
-            web_context = autonomous_search(prompt)
+            st.write(f"Querying Open Web: {active_prompt}")
+            web_context = autonomous_search(active_prompt)
             status.update(label="✅ Internet Learning Synced", state="complete", expanded=False)
 
     try:
-        brain_model = "google/vertex-tpu-v3-large"
-        MODEL_QUEUE = [brain_model]
+        # ── Intelligence Engine Selection ──────────
+        if model_option == "gemini-2.0-flash (Premium Grounding)":
+            with st.chat_message("assistant"):
+                with st.spinner("🌌 Consulting Google Knowledge Matrix..."):
+                    try:
+                        gemini_model = genai.GenerativeModel(
+                            model_name="gemini-flash-latest",
+                            tools=[{"google_search_retrieval": {}}]
+                        )
+                        response = gemini_model.generate_content(active_prompt)
+                        full_response = response.text
+                        st.markdown(full_response)
+                        st.session_state.messages.append({"role": "assistant", "content": full_response})
+                        save_chat_to_disk(st.session_state.chat_id, st.session_state.messages)
+                        st.rerun()
+                    except Exception as e:
+                        if "429" in str(e) or "quota" in str(e).lower():
+                            st.warning("⚠️ Gemini Quota Exceeded. Falling back to Deep Web Scraper...")
+                            # Continue to Groq path
+                        else:
+                            st.error(f"Gemini Error: {str(e)}")
+                            st.stop()
         
-        rag_context = fetch_knowledge(prompt, st.session_state.get('index'), st.session_state.get('chunks'))
+        # ── Legacy/Groq Path ──────────────────────
+        MODEL_QUEUE = ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile"]
+        if model_option in MODEL_QUEUE:
+            MODEL_QUEUE = [model_option]
+        
+        rag_context = fetch_knowledge(active_prompt, st.session_state.get('index'), st.session_state.get('chunks'))
         full_context = f"{rag_context}\n{web_context}"
         
         # ── Intelligence Mode Selection ────────────────
@@ -821,11 +1053,17 @@ if prompt:
 
         sys_msg = (
             f"You are KALI AI (v6.0 Architectural Edition), an elite intelligence and document studio.\n"
+            f"TODAY'S DATE: {datetime.now().strftime('%A, %B %d, %Y')}\n"
+            f"CRITICAL: You have REAL-TIME access to the internet via the Web Intelligence Engine. "
+            f"You have been provided with both search snippets and DEEP CONTENT from the top 5 web sources. "
+            f"Synthesize this live data to provide 'GPT-style' perfect, comprehensive, and up-to-the-minute answers.\n"
+            f"STRICT RULE: NEVER use placeholders like [Team 1] or [Score]. If the data is not in the provided context, "
+            f"state exactly what you found and what is missing. Use actual numbers, names, and dates from the sources.\n"
             f"{mode_instruction}\n\n"
             f"CONTEXT (RAG + Web Sync):\n{full_context}"
         )
 
-        current_model = brain_model
+        current_model = model_option
         msgs = [{"role": "system", "content": sys_msg}]
         
         if st.session_state.get('vision_active'):
@@ -833,7 +1071,7 @@ if prompt:
             msgs.append({
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": prompt},
+                    {"type": "text", "text": active_prompt},
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{st.session_state.vision_base64}"}}
                 ]
             })
@@ -847,7 +1085,7 @@ if prompt:
 
         # ── Intelligence Matrix (TPU-Locked Protocol) ──
         # Policy: Direct routing to Google Cloud TPU v3 Cluster
-        MODEL_QUEUE = [brain_model]
+        MODEL_QUEUE = [model_option]
         
         with st.chat_message("assistant"):
             full_res = ""
@@ -857,7 +1095,9 @@ if prompt:
                     if engine.startswith("google/"):
                         with st.spinner("🛰️ Thinking..."):
                             client = Groq(api_key=auth_key) if auth_key else None
-                            response = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=msgs)
+                            # Fallback logic for legacy model names
+                            actual_model = "llama-3.3-70b-versatile" if "google" in engine else engine
+                            response = client.chat.completions.create(model=actual_model, messages=msgs)
                             full_res = response.choices[0].message.content
                     else:
                         client = Groq(api_key=auth_key) if auth_key else None
@@ -865,8 +1105,21 @@ if prompt:
                         full_res = response.choices[0].message.content
                     break 
                 except Exception as e:
-                    st.error(f"📡 TPU Synchronicity Failure: {str(e)}")
-                    break
+                    if "401" in str(e) or "api_key" in str(e).lower():
+                        st.warning("⚠️ Groq Intelligence Link Expired. Activating Gemini Secondary Cluster...")
+                        try:
+                            # Final Fallback: Standard Gemini (Enhanced with the intelligence context)
+                            backup_model = genai.GenerativeModel("gemini-flash-latest")
+                            # Combine system instructions and full context for the backup
+                            backup_res = backup_model.generate_content(f"{sys_msg}\n\nUSER QUERY: {active_prompt}")
+                            full_res = backup_res.text
+                            break
+                        except Exception as e2:
+                            st.error(f"📡 Total Intelligence Collapse: {str(e2)}")
+                            st.stop()
+                    else:
+                        st.error(f"📡 TPU Synchronicity Failure: {str(e)}")
+                        break
 
             st.markdown(full_res)
             st.session_state.messages.append({"role": "assistant", "content": full_res})
@@ -882,14 +1135,14 @@ if prompt:
             # Triggers if arrow syntax exists OR if architectural XML is detected
             architectural_intent = any(tag in full_res for tag in ["<w:sectPr>", "<w:pgNumType>", "<w:headerReference>", "<w:footerReference>"])
             
-            if "->" in full_res or architectural_intent or any(word in prompt.lower() for word in ["download", "link", "get file"]):
+            if "->" in full_res or architectural_intent or any(word in active_prompt.lower() for word in ["download", "link", "get file"]):
                 # --- STARLIGHT AUTO-DISCOVERY (v7.0 Magic) ---
                 if not st.session_state.get('template_bytes'):
                     desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
                     docx_files = [f for f in os.listdir(desktop_path) if f.lower().endswith(".docx")]
                     
                     found_file = None
-                    prompt_words = prompt.lower().split()
+                    prompt_words = active_prompt.lower().split()
                     for df in docx_files:
                         if any(word in df.lower() for word in prompt_words if len(word) > 3):
                             found_file = os.path.join(desktop_path, df)

@@ -16,3 +16,4 @@ googlesearch-python
 beautifulsoup4
 trafilatura
 PyPDF2
+python-dotenv
