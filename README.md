@@ -1,4 +1,4 @@
-# 🤖 ChatGPT Clone | Intelligence Studio v2.0
+# ✦ Kali AI | Intelligence Studio v2.0
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.32+-FF4B4B?style=for-the-badge&logo=streamlit)
@@ -21,7 +21,7 @@ An advanced, high-fidelity AI assistant designed for real-time intelligence gath
 ### 1. Clone the Repository
 ```bash
 git clone https://github.com/BLACKDEVIL4114/Multi-Modal-AI-Search-Engine.git
-cd Multi-Modal-AI-Search-Engine/chatgpt_clone
+cd Multi-Modal-AI-Search-Engine/kali_ai
 ```
 
 ### 2. Install Dependencies
@@ -30,7 +30,7 @@ pip install -r requirements.txt
 ```
 
 ### 3. Configure Environment Variables
-Create a `.env` file in the `chatgpt_clone` directory:
+Create a `.env` file in the `kali_ai` directory:
 ```env
 GROQ_API_KEY=your_groq_key_here
 GEMINI_API_KEY=your_gemini_key_here

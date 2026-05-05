@@ -1,5 +1,5 @@
 import streamlit as st
-st.set_page_config(page_title="ChatGPT Clone | Intelligence Studio", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Kali AI | Intelligence Studio v2", page_icon="✦", layout="wide")
 
 import google.generativeai as genai
 import os
@@ -38,7 +38,7 @@ if 'initialized' not in st.session_state:
     if 'edit_text' not in st.session_state: st.session_state.edit_text = ""
 
 # ── Persistence Engine ──────────────────────────────
-HISTORY_DIR = ".chatgpt_history"
+HISTORY_DIR = ".kali_history"
 HISTORY_FILE = os.path.join(HISTORY_DIR, "chat_history.json")
 
 def save_chat_to_disk(chat_id, messages):
@@ -160,7 +160,7 @@ def fetch_web_content(url):
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "chat_id" not in st.session_state:
-    st.session_state.chat_id = "chatgpt_" + str(int(time.time()))
+    st.session_state.chat_id = "kali_" + str(int(time.time()))
 
 # --- HYPER-RESILIENT SYNC ---
 load_dotenv(override=True) 
@@ -408,14 +408,14 @@ all_history = load_all_chats()
 with st.sidebar:
     st.markdown("""
         <div class="sb-logo-v2">
-            <div class="logo-mark-v2">🤖</div>
-            <div style="color:white; font-size:15px; font-weight:500; line-height:1.1;">ChatGPT Clone<br><span style='font-size:9px; color:#a78bfa; letter-spacing:1px; font-weight:400;'>INTELLIGENCE STUDIO</span></div>
+            <div class="logo-mark-v2">✦</div>
+            <div style="color:white; font-size:15px; font-weight:500; line-height:1.1;">Kali AI<br><span style='font-size:9px; color:#a78bfa; letter-spacing:1px; font-weight:400;'>STUDIO v2</span></div>
         </div>
     """, unsafe_allow_html=True)
     
     if st.button("＋ New Session", use_container_width=True):
         st.session_state.messages = []
-        st.session_state.chat_id = "chatgpt_" + str(int(time.time()))
+        st.session_state.chat_id = "kali_" + str(int(time.time()))
         for key in ["template_bytes", "chunks", "index", "final_doc"]:
             if key in st.session_state: del st.session_state[key]
         st.rerun()
@@ -486,11 +486,12 @@ if not st.session_state.messages:
     st.markdown("""
         <div class="hero-v2">
             <div class="bg-glow-v2"></div>
+            <div class="logo-mark-v2" style="width:80px; height:80px; font-size:42px; margin-bottom:25px; z-index:1; border-radius:18px;">✦</div>
             <h1 style="font-size:54px; font-weight:800; color:#f8fafc; margin-top:0; z-index:1; text-align:center; line-height:1.1;">
-                Meet <span style="background: linear-gradient(135deg, #8b5cf6, #d946ef); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ChatGPT Clone</span>
+                Meet <span style="background: linear-gradient(135deg, #8b5cf6, #d946ef); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Kali AI</span>
             </h1>
             <p style="color:#64748b; font-size:14px; text-transform:uppercase; letter-spacing:3px; margin-top:5px; z-index:1; font-weight:600;">
-                Your Advanced AI Personal Assistant
+                Advanced Multi-Modal Search Engine
             </p>
         </div>
         <div style="text-align:center; position:relative; z-index:1; margin-bottom:50px;">
@@ -1062,7 +1063,7 @@ if active_prompt:
             )
 
         sys_msg = (
-            f"You are ChatGPT Clone (v6.0), an elite AI assistant.\n"
+            f"You are Kali AI (v6.0 Architectural Edition), an elite intelligence and document studio.\n"
             f"TODAY'S DATE: {datetime.now().strftime('%A, %B %d, %Y')}\n"
             f"CRITICAL: You have REAL-TIME access to the internet via the Web Intelligence Engine. "
             f"You have been provided with both search snippets and DEEP CONTENT from the top 5 web sources. "
