@@ -1,5 +1,5 @@
 import streamlit as st
-st.set_page_config(page_title="Kali AI | Intelligence Studio v2", page_icon="✦", layout="wide")
+st.set_page_config(page_title="ChatGPT Clone | Intelligence Studio", page_icon="🤖", layout="wide")
 
 import google.generativeai as genai
 import os
@@ -38,7 +38,7 @@ if 'initialized' not in st.session_state:
     if 'edit_text' not in st.session_state: st.session_state.edit_text = ""
 
 # ── Persistence Engine ──────────────────────────────
-HISTORY_DIR = ".kali_history"
+HISTORY_DIR = ".chatgpt_history"
 HISTORY_FILE = os.path.join(HISTORY_DIR, "chat_history.json")
 
 def save_chat_to_disk(chat_id, messages):
@@ -160,7 +160,7 @@ def fetch_web_content(url):
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "chat_id" not in st.session_state:
-    st.session_state.chat_id = "kali_" + str(int(time.time()))
+    st.session_state.chat_id = "chatgpt_" + str(int(time.time()))
 
 # --- HYPER-RESILIENT SYNC ---
 load_dotenv(override=True) 
@@ -408,14 +408,14 @@ all_history = load_all_chats()
 with st.sidebar:
     st.markdown("""
         <div class="sb-logo-v2">
-            <div class="logo-mark-v2">✦</div>
-            <div style="color:white; font-size:15px; font-weight:500; line-height:1.1;">Kali AI<br><span style='font-size:9px; color:#a78bfa; letter-spacing:1px; font-weight:400;'>STUDIO v2</span></div>
+            <div class="logo-mark-v2">🤖</div>
+            <div style="color:white; font-size:15px; font-weight:500; line-height:1.1;">ChatGPT Clone<br><span style='font-size:9px; color:#a78bfa; letter-spacing:1px; font-weight:400;'>INTELLIGENCE STUDIO</span></div>
         </div>
     """, unsafe_allow_html=True)
     
     if st.button("＋ New Session", use_container_width=True):
         st.session_state.messages = []
-        st.session_state.chat_id = "kali_" + str(int(time.time()))
+        st.session_state.chat_id = "chatgpt_" + str(int(time.time()))
         for key in ["template_bytes", "chunks", "index", "final_doc"]:
             if key in st.session_state: del st.session_state[key]
         st.rerun()
@@ -450,8 +450,19 @@ with st.sidebar:
         load_dotenv(override=True)
         st.rerun()
         
-    auth_key = st.text_input("Groq Engine Key", value=os.getenv("GROQ_API_KEY", ""), type="password")
-    gemini_key = st.text_input("Gemini Engine Key", value=os.getenv("GEMINI_API_KEY", ""), type="password")
+    # --- HYPER-SECURE KEY MANAGEMENT ---
+    # Hide inputs entirely if keys exist in .env
+    groq_env = os.getenv("GROQ_API_KEY", "")
+    gemini_env = os.getenv("GEMINI_API_KEY", "")
+    
+    if not groq_env or not gemini_env:
+        with st.expander("🔑 Intelligence Credentials", expanded=True):
+            auth_key = st.text_input("Groq Engine Key", value=groq_env, type="password")
+            gemini_key = st.text_input("Gemini Engine Key", value=gemini_env, type="password")
+    else:
+        auth_key = groq_env
+        gemini_key = gemini_env
+        st.markdown("<div style='font-size:10px; color:#10b981; margin-top:10px; font-weight:600; letter-spacing:0.5px;'>🛡️ NEURAL LINK ENCRYPTED (.env)</div>", unsafe_allow_html=True)
     
     if gemini_key:
         genai.configure(api_key=gemini_key)
@@ -475,12 +486,11 @@ if not st.session_state.messages:
     st.markdown("""
         <div class="hero-v2">
             <div class="bg-glow-v2"></div>
-            <div class="logo-mark-v2" style="width:80px; height:80px; font-size:42px; margin-bottom:25px; z-index:1; border-radius:18px;">✦</div>
             <h1 style="font-size:54px; font-weight:800; color:#f8fafc; margin-top:0; z-index:1; text-align:center; line-height:1.1;">
-                Meet <span style="background: linear-gradient(135deg, #8b5cf6, #d946ef); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Kali AI</span>
+                Meet <span style="background: linear-gradient(135deg, #8b5cf6, #d946ef); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ChatGPT Clone</span>
             </h1>
             <p style="color:#64748b; font-size:14px; text-transform:uppercase; letter-spacing:3px; margin-top:5px; z-index:1; font-weight:600;">
-                Advanced Multi-Modal Search Engine
+                Your Advanced AI Personal Assistant
             </p>
         </div>
         <div style="text-align:center; position:relative; z-index:1; margin-bottom:50px;">
@@ -889,19 +899,19 @@ st.markdown("<br><br>", unsafe_allow_html=True)
 footer_cols = st.columns([1, 15], gap="small")
 
 with st.sidebar:
-    st.markdown("### 🛰️ SYSTEM LINK")
-    remote_path = st.text_input("Local File Path (Global Access)", placeholder="C:\\Path\\to\\document.docx")
-    if remote_path and os.path.exists(remote_path):
-        if st.button("🔌 CONNECT SYSTEM FILE"):
-            try:
-                with open(remote_path, 'rb') as rf:
-                    file_bytes = rf.read()
-                    st.session_state.template_bytes = file_bytes
-                    st.session_state.uploaded_file_name = os.path.basename(remote_path)
-                    st.success(f"Linked: {st.session_state.uploaded_file_name}")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Link Error: {str(e)}")
+    with st.expander("🛰️ SYSTEM LINK", expanded=False):
+        remote_path = st.text_input("Local File Path (Global Access)", placeholder="C:\\Path\\to\\document.docx")
+        if remote_path and os.path.exists(remote_path):
+            if st.button("🔌 CONNECT SYSTEM FILE"):
+                try:
+                    with open(remote_path, 'rb') as rf:
+                        file_bytes = rf.read()
+                        st.session_state.template_bytes = file_bytes
+                        st.session_state.uploaded_file_name = os.path.basename(remote_path)
+                        st.success(f"Linked: {st.session_state.uploaded_file_name}")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Link Error: {str(e)}")
 
     st.divider()
     st.markdown("### 💼 SESSION ASSETS")
@@ -1052,7 +1062,7 @@ if active_prompt:
             )
 
         sys_msg = (
-            f"You are KALI AI (v6.0 Architectural Edition), an elite intelligence and document studio.\n"
+            f"You are ChatGPT Clone (v6.0), an elite AI assistant.\n"
             f"TODAY'S DATE: {datetime.now().strftime('%A, %B %d, %Y')}\n"
             f"CRITICAL: You have REAL-TIME access to the internet via the Web Intelligence Engine. "
             f"You have been provided with both search snippets and DEEP CONTENT from the top 5 web sources. "
