@@ -328,6 +328,78 @@ async def get_apify_tools():
             tools = await session.list_tools()
             return tools.tools
 
+def call_mcp_tool(server_name: str, tool_name: str, arguments_json: str) -> str:
+    """Execute an MCP tool on a specified server.
+    
+    Args:
+        server_name: The name of the server ('playwright', 'chrome-devtools', 'apify').
+        tool_name: The name of the tool to execute.
+        arguments_json: JSON string containing the arguments for the tool.
+    """
+    import json
+    try:
+        args = json.loads(arguments_json)
+    except:
+        args = {}
+        
+    if server_name == "playwright":
+        params = server_params
+    elif server_name == "chrome-devtools":
+        params = chrome_params
+    elif server_name == "apify":
+        token = ""
+        try:
+            with open(".env", "r") as f:
+                for line in f:
+                    if line.startswith("APIFY_TOKEN="):
+                        token = line.split("=")[1].strip()
+        except:
+            pass
+            
+        from mcp import StdioServerParameters
+        params = StdioServerParameters(
+            command="npx",
+            args=["-y", "@apify/actors-mcp-server", "--actors", "apify/rag-web-browser"],
+            env={"APIFY_TOKEN": token} if token else None
+        )
+    else:
+        return f"Error: Unknown server {server_name}"
+        
+    async def _call():
+        from mcp.client.stdio import stdio_client
+        from mcp import ClientSession
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(tool_name, arguments=args)
+                return result.content
+                
+    try:
+        content = run_async(_call())
+        return str(content)
+    except Exception as e:
+        return f"Error executing tool: {str(e)}"
+
+def playwright_navigate(url: str) -> str:
+    """Navigate to a URL using Playwright."""
+    import json
+    return call_mcp_tool("playwright", "navigate", json.dumps({"url": url}))
+
+def playwright_screenshot() -> str:
+    """Take a screenshot of the current page using Playwright."""
+    import json
+    return call_mcp_tool("playwright", "screenshot", json.dumps({}))
+
+def apify_search(query: str) -> str:
+    """Search the web using Apify's rag-web-browser."""
+    import json
+    return call_mcp_tool("apify", "apify--rag-web-browser", json.dumps({"query": query}))
+
+def chrome_navigate(url: str) -> str:
+    """Open a URL in the user's running Chrome browser via DevTools."""
+    import json
+    return call_mcp_tool("chrome-devtools", "navigate", json.dumps({"url": url}))
+
 def run_async(coro):
     return asyncio.run(coro)
 client = Groq(api_key=DEFAULT_API_KEY) if DEFAULT_API_KEY else None
@@ -448,6 +520,34 @@ with st.sidebar:
                         st.error(f"Failed to start Apify: {str(e)}")
                         st.info("Make sure your API token is correct and you have an active internet connection.")
     
+        st.divider()
+        st.markdown("### 🚀 Multi-Server Demo")
+        if st.button("Run 3-Server Demo (Auto)", use_container_width=True):
+            with st.spinner("Running 3-Server Demo..."):
+                # Step 1: Search
+                st.info("1. Searching via Apify...")
+                try:
+                    search_result = apify_search("trending AI news headline today")
+                    st.text(str(search_result)[:200] + "...")
+                except Exception as e:
+                    st.error(f"Apify failed: {e}")
+                
+                # Step 2: Screenshot
+                st.info("2. Navigating & Screenshot via Playwright...")
+                try:
+                    playwright_navigate("https://www.theverge.com")
+                    playwright_screenshot()
+                    st.success("Screenshot captured!")
+                except Exception as e:
+                    st.error(f"Playwright failed: {e}")
+                
+                # Step 3: Open in Chrome
+                st.info("3. Opening in your Chrome browser...")
+                try:
+                    chrome_navigate("https://www.theverge.com")
+                    st.success("Opened in Chrome!")
+                except Exception as e:
+                    st.error(f"Chrome failed: {e}")
 
     # --- HYPER-SECURE KEY MANAGEMENT ---
     # Hide inputs entirely if keys exist in .env
@@ -1027,11 +1127,55 @@ if active_prompt:
                     try:
                         gemini_model = genai.GenerativeModel(
                             model_name="gemini-2.0-flash",
-                            tools=[{"google_search_retrieval": {}}],
-                            system_instruction="You are a precise fact-checking assistant. When answering based on search results, ensure all numbers, scores, and names are accurate. Do not guess or interpolate if the source is not clear."
+                            tools=[
+                                playwright_navigate, 
+                                playwright_screenshot, 
+                                apify_search, 
+                                chrome_navigate
+                            ],
+                            system_instruction="CRITICAL: You are an agent with access to external tools. DO NOT say you are a text-based AI. You MUST use the tools provided to accomplish the user's request. Available tools: 'playwright_navigate', 'playwright_screenshot', 'apify_search', 'chrome_navigate'. When asked to search, use 'apify_search'. When asked to screenshot, use 'playwright_screenshot'. When asked to open in Chrome, use 'chrome_navigate'. Use them!"
                         )
-                        response = gemini_model.generate_content(active_prompt)
+                        
+                        # Construct contents list from history
+                        contents = []
+                        for msg in st.session_state.messages:
+                            role = "user" if msg["role"] == "user" else "model"
+                            contents.append({"role": role, "parts": [msg["content"]]})
+                            
+                        # Call generate_content
+                        response = gemini_model.generate_content(contents=contents)
+                        
+                        # Manual Tool Use Loop
+                        max_iterations = 5
+                        iterations = 0
+                        while response.candidates and response.candidates[0].function_calls and iterations < max_iterations:
+                            iterations += 1
+                            for call in response.candidates[0].function_calls:
+                                name = call.name
+                                args = call.args
+                                
+                                st.info(f"🤖 Executing tool: {name}...")
+                                
+                                result = ""
+                                if name == "apify_search":
+                                    result = apify_search(args.get('query', ''))
+                                elif name == "playwright_navigate":
+                                    result = playwright_navigate(args.get('url', ''))
+                                elif name == "playwright_screenshot":
+                                    result = playwright_screenshot()
+                                elif name == "chrome_navigate":
+                                    result = chrome_navigate(args.get('url', ''))
+                                else:
+                                    result = f"Error: Unknown function {name}"
+                                    
+                                # Append the result as a user message (fallback)
+                                contents.append({"role": "user", "parts": [f"System: Tool '{name}' returned result:\n{result}"]})
+                                
+                                # Call generate_content again WITHOUT forcing tool use (so it can answer)
+                                response = gemini_model.generate_content(contents=contents)
+                        
                         full_response = response.text
+                        
                         st.markdown(full_response)
                         st.session_state.messages.append({"role": "assistant", "content": full_response})
                         save_chat_to_disk(st.session_state.chat_id, st.session_state.messages)
@@ -1082,7 +1226,8 @@ if active_prompt:
             f"STRICT RULE: NEVER use placeholders like [Team 1] or [Score]. If the data is not in the provided context, "
             f"state exactly what you found and what is missing. Use actual numbers, names, and dates from the sources.\n"
             f"{mode_instruction}\n\n"
-            f"CONTEXT (RAG + Web Sync):\n{full_context}"
+            f"CONTEXT (RAG + Web Sync):\n{full_context}\n\n"
+            f"CRITICAL: You have access to external tools. DO NOT say you are a text-based AI. You MUST use the tools provided to accomplish the user's request. Available tools: 'apify_search', 'playwright_navigate', 'playwright_screenshot', 'chrome_navigate'. Use them!"
         )
 
         current_model = model_option
@@ -1107,7 +1252,10 @@ if active_prompt:
 
         # ── Intelligence Matrix (TPU-Locked Protocol) ──
         # Policy: Direct routing to Google Cloud TPU v3 Cluster
-        MODEL_QUEUE = [model_option]
+        if model_option == "gemini-2.0-flash (Premium Grounding)":
+            MODEL_QUEUE = ["llama-3.3-70b-versatile"]
+        else:
+            MODEL_QUEUE = [model_option]
         
         with st.chat_message("assistant"):
             full_res = ""
@@ -1119,7 +1267,103 @@ if active_prompt:
                             client = Groq(api_key=auth_key) if auth_key else None
                             # Fallback logic for legacy model names
                             actual_model = "llama-3.3-70b-versatile" if "google" in engine else engine
-                            response = client.chat.completions.create(model=actual_model, messages=msgs)
+                            import json
+                            groq_tools = [
+                                {
+                                    "type": "function",
+                                    "function": {
+                                        "name": "apify_search",
+                                        "description": "Search the web using Apify",
+                                        "parameters": {
+                                            "type": "object",
+                                            "properties": {
+                                                "query": {"type": "string"}
+                                            },
+                                            "required": ["query"]
+                                        }
+                                    }
+                                },
+                                {
+                                    "type": "function",
+                                    "function": {
+                                        "name": "playwright_navigate",
+                                        "description": "Navigate to a URL using Playwright",
+                                        "parameters": {
+                                            "type": "object",
+                                            "properties": {
+                                                "url": {"type": "string"}
+                                            },
+                                            "required": ["url"]
+                                        }
+                                    }
+                                },
+                                {
+                                    "type": "function",
+                                    "function": {
+                                        "name": "playwright_screenshot",
+                                        "description": "Take a screenshot of the current page",
+                                        "parameters": {
+                                            "type": "object",
+                                            "properties": {}
+                                        }
+                                    }
+                                },
+                                {
+                                    "type": "function",
+                                    "function": {
+                                        "name": "chrome_navigate",
+                                        "description": "Open a URL in the user's running Chrome browser",
+                                        "parameters": {
+                                            "type": "object",
+                                            "properties": {
+                                                "url": {"type": "string"}
+                                            },
+                                            "required": ["url"]
+                                        }
+                                    }
+                                }
+                            ]
+                            
+                            response = client.chat.completions.create(
+                                model=actual_model, 
+                                messages=msgs,
+                                tools=groq_tools,
+                                tool_choice="auto"
+                            )
+                            
+                            # Handle tool calls
+                            if response.choices[0].message.tool_calls:
+                                tool_calls = response.choices[0].message.tool_calls
+                                msgs.append(response.choices[0].message) # Append assistant message with tool calls
+                                
+                                for tool_call in tool_calls:
+                                    name = tool_call.function.name
+                                    args = json.loads(tool_call.function.arguments)
+                                    
+                                    st.info(f"🤖 Groq Executing tool: {name}...")
+                                    
+                                    result = ""
+                                    if name == "apify_search":
+                                        result = apify_search(args.get('query', ''))
+                                    elif name == "playwright_navigate":
+                                        result = playwright_navigate(args.get('url', ''))
+                                    elif name == "playwright_screenshot":
+                                        result = playwright_screenshot()
+                                    elif name == "chrome_navigate":
+                                        result = chrome_navigate(args.get('url', ''))
+                                    else:
+                                        result = f"Error: Unknown function {name}"
+                                        
+                                    # Append tool response
+                                    msgs.append({
+                                        "role": "tool",
+                                        "tool_call_id": tool_call.id,
+                                        "name": name,
+                                        "content": result
+                                    })
+                                    
+                                # Call again to get final answer
+                                response = client.chat.completions.create(model=actual_model, messages=msgs)
                             full_res = response.choices[0].message.content
                     else:
                         client = Groq(api_key=auth_key) if auth_key else None
