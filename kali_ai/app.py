@@ -162,29 +162,27 @@ if "messages" not in st.session_state:
 if "chat_id" not in st.session_state:
     st.session_state.chat_id = "kali_" + str(int(time.time()))
 
-# --- HYPER-RESILIENT SYNC ---
-load_dotenv(override=True) 
-DEFAULT_API_KEY = os.getenv("GROQ_API_KEY", "")
-DEFAULT_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
-
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
 
     :root {
-        --bg-deep: #0a0a0f;
-        --sidebar-bg: #050508;
-        --accent-primary: #8b5cf6;
-        --accent-secondary: #c084fc;
-        --border-subtle: rgba(255, 255, 255, 0.05);
-        --text-bright: #f8fafc;
-        --glass-bg: rgba(15, 15, 25, 0.7);
-        --glass-border: rgba(255, 255, 255, 0.1);
+        --bg-deep: #f8fafc;
+        --sidebar-bg: #ffffff;
+        --accent-primary: #a855f7;
+        --accent-secondary: #ec4899;
+        --accent-glow: rgba(168, 85, 247, 0.1);
+        --border-subtle: rgba(0, 0, 0, 0.05);
+        --text-bright: #0f172a;
+        --text-muted: #64748b;
+        --glass-bg: rgba(255, 255, 255, 0.9);
+        --glass-border: rgba(0, 0, 0, 0.05);
+        --card-glow: rgba(168, 85, 247, 0.05);
     }
 
-    /* 1. Global Midnight Slate Foundation */
+    /* 1. Global Light Foundation */
     [data-testid="stAppViewContainer"], .stApp {
-        background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #0a0a0f 100%) !important;
+        background-color: var(--bg-deep) !important;
         color: var(--text-bright) !important;
         font-family: 'Inter', sans-serif !important;
     }
@@ -193,214 +191,145 @@ st.markdown("""
         background: transparent !important;
     }
 
-    h1, h2, h3 {
+    h1, h2, h3, h4 {
         font-family: 'Outfit', sans-serif !important;
-        letter-spacing: -0.02em !important;
+        letter-spacing: -0.03em !important;
+        font-weight: 700 !important;
+        color: var(--text-bright) !important;
     }
 
-    /* 2. Zero-Flicker Sidebar */
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.02);
+    }
+    ::-webkit-scrollbar-thumb {
+        background: rgba(168, 85, 247, 0.3);
+        border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: rgba(168, 85, 247, 0.5);
+    }
+
+    /* 2. Sleek Light Sidebar */
     section[data-testid="stSidebar"] {
         background-color: var(--sidebar-bg) !important;
         border-right: 1px solid var(--border-subtle) !important;
     }
 
-    .sb-logo-v2 {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        padding: 20px 0;
-        border-bottom: 1px solid var(--border-subtle);
-        margin-bottom: 25px;
-    }
-
-    .logo-mark-v2 {
-        width: 42px;
-        height: 42px;
-        background: linear-gradient(135deg, #8b5cf6, #d946ef);
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 22px;
-        color: white;
-        box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
-        font-family: 'Outfit', sans-serif;
-    }
-
-    /* 3. High-Fidelity Canvas */
-    .hero-v2 {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 80px 0 40px;
-        position: relative;
-    }
-
-    .bg-glow-v2 {
-        position: absolute;
-        width: 800px;
-        height: 800px;
-        background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        pointer-events: none;
-        z-index: 0;
-    }
-
-    /* 4. Chat & Input Refinement */
+    /* 3. Chat & Input Refinement */
     [data-testid="stChatMessage"] {
-        background-color: var(--glass-bg) !important;
-        backdrop-filter: blur(12px) !important;
-        border: 1px solid var(--glass-border) !important;
-        border-radius: 20px !important;
-        margin-bottom: 24px !important;
+        background-color: white !important;
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: 16px !important;
+        margin-bottom: 20px !important;
         padding: 1.5rem !important;
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3) !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+        transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    }
+    
+    [data-testid="stChatMessage"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
     }
 
     [data-testid="stChatMessageContent"] {
-        color: #f1f5f9 !important;
-        font-size: 1.05rem !important;
+        color: var(--text-bright) !important;
+        font-size: 1rem !important;
         line-height: 1.6 !important;
     }
 
-    [data-testid="stChatMessageContent"] p, [data-testid="stChatMessageContent"] li, [data-testid="stChatMessageContent"] span {
-        color: #f1f5f9 !important;
-    }
-
-    /* Action Buttons (Copy/Edit) Styling */
-    .stChatActionRow {
-        display: flex;
-        gap: 8px;
-        margin-top: 8px;
-    }
-
-    div[data-testid="column"] button {
-        background: rgba(255,255,255,0.05) !important;
-        border: 1px solid rgba(255,255,255,0.1) !important;
-        border-radius: 6px !important;
-        padding: 2px 6px !important;
-        font-size: 12px !important;
-        color: #94a3b8 !important;
-        min-height: 24px !important;
-        line-height: 1 !important;
-    }
-
-    div[data-testid="column"] button:hover {
-        background: rgba(139, 92, 246, 0.2) !important;
-        border-color: rgba(139, 92, 246, 0.4) !important;
-        color: white !important;
-    }
-
-    /* Global Button Overrides */
-    .stButton>button, .stDownloadButton>button {
-        background: rgba(139, 92, 246, 0.1) !important;
-        color: white !important;
-        border: 1px solid rgba(139, 92, 246, 0.2) !important;
-        border-radius: 12px !important;
-        padding: 0.6rem 1.2rem !important;
-        font-weight: 500 !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-        text-transform: none !important;
-    }
-    
-    .stButton>button:hover {
-        background: rgba(139, 92, 246, 0.2) !important;
-        border-color: #8b5cf6 !important;
-        box-shadow: 0 0 20px rgba(139, 92, 246, 0.3) !important;
-        transform: translateY(-2px);
-    }
-
-    /* Sidebar Specific Contrast */
-    [data-testid="stSidebar"] .stButton>button {
-        background-color: transparent !important;
-        border: 1px solid transparent !important;
-        color: #64748b !important;
-        text-align: left !important;
-        font-size: 13px !important;
-        padding: 6px 12px !important;
-        width: 100% !important;
-        margin-bottom: 0px !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: flex-start !important;
-        line-height: 1.1 !important;
-        min-height: 32px !important;
-        border-radius: 8px !important;
-        transition: all 0.2s ease !important;
-    }
-    
-    [data-testid="stSidebar"] .stButton {
-        margin-bottom: -10px !important;
-        padding-bottom: 0px !important;
-    }
-    
-    [data-testid="stSidebar"] .stButton>button:hover {
-        background: rgba(139, 92, 246, 0.08) !important;
-        color: #c084fc !important;
-    }
-
-    [data-testid="stSidebar"] .stButton>button:active {
-        background: rgba(139, 92, 246, 0.1) !important;
-    }
-
-    /* Precision Input Bar */
+    /* Input Bar */
     .stChatInputContainer {
-        border-radius: 18px !important;
-        background-color: rgba(15, 15, 25, 0.95) !important;
-        border: 1px solid var(--glass-border) !important;
-        padding: 10px !important;
-        backdrop-filter: blur(20px) !important;
+        border-radius: 24px !important;
+        background-color: white !important;
+        border: 1px solid var(--border-subtle) !important;
+        padding: 12px 16px !important;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
     }
     
-    .stChatInputContainer:focus-within {
-        border-color: #8b5cf6 !important;
-        box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2) !important;
+    .stChatInputContainer textarea {
+        color: var(--text-bright) !important;
+        font-family: 'Inter', sans-serif !important;
     }
 
-    /* Logic Chips */
-    .chip-v2 {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 12px;
-        padding: 10px 20px;
-        font-size: 14px;
-        color: #e2e8f0;
-        margin: 6px;
-        display: inline-block;
-        transition: all 0.2s ease;
-        cursor: pointer;
-    }
-    .chip-v2:hover {
-        background: rgba(139, 92, 246, 0.1);
-        border-color: #8b5cf6;
-        color: #c084fc;
-        transform: scale(1.05);
-    }
-
-    /* Voice Intelligence Premium Styling */
-    .voice-card {
-        background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(217, 70, 239, 0.05));
-        border: 1px solid rgba(139, 92, 246, 0.2);
-        border-radius: 16px;
-        padding: 20px;
-        margin-top: 15px;
-    }
-
-    /* Pulse Badge Animation */
-    @keyframes pulse {
-        0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); }
-        70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(139, 92, 246, 0); }
-        100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
-    }
-    .pulse-badge {
-        animation: pulse 2s infinite;
+    /* Popover */
+    [data-testid="stPopoverDetails"] {
+        background-color: white !important;
+        border: 1px solid var(--border-subtle) !important;
+        border-radius: 16px !important;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1) !important;
+        padding: 20px !important;
     }
 </style>
+<script>
+function copyText(btn) {
+  const msgContainer = btn.closest('[data-testid="stChatMessage"]');
+  if (!msgContainer) return;
+  const markdownArea = msgContainer.querySelector('.stMarkdown');
+  const text = markdownArea ? markdownArea.innerText : msgContainer.innerText;
+  
+  const el = document.createElement('textarea');
+  el.value = text;
+  document.body.appendChild(el);
+  el.select();
+  document.execCommand('copy');
+  document.body.removeChild(el);
+}
+</script>
 """, unsafe_allow_html=True)
 # --- ENGINE INITIALIZATION v2.0 ---
 DEFAULT_API_KEY = os.getenv("GROQ_API_KEY", "")
+
+# --- MCP CLIENT CONFIGURATION ---
+import asyncio
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+server_params = StdioServerParameters(
+    command="npx",
+    args=["@playwright/mcp@latest"],
+    env=None
+)
+
+chrome_params = StdioServerParameters(
+    command="npx",
+    args=["-y", "chrome-devtools-mcp@latest", "--browser-url=http://127.0.0.1:9222"],
+    env=None
+)
+
+apify_params = StdioServerParameters(
+    command="npx",
+    args=["-y", "@apify/actors-mcp-server", "--actors", "apify/rag-web-browser"],
+    env=None
+)
+
+async def get_playwright_tools():
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            tools = await session.list_tools()
+            return tools.tools
+
+async def get_chrome_tools():
+    async with stdio_client(chrome_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            tools = await session.list_tools()
+            return tools.tools
+
+async def get_apify_tools():
+    async with stdio_client(apify_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            tools = await session.list_tools()
+            return tools.tools
+
+def run_async(coro):
+    return asyncio.run(coro)
 client = Groq(api_key=DEFAULT_API_KEY) if DEFAULT_API_KEY else None
 
 # --- SIDEBAR & NAVIGATION v2.0 ---
@@ -409,7 +338,7 @@ with st.sidebar:
     st.markdown("""
         <div class="sb-logo-v2">
             <div class="logo-mark-v2">✦</div>
-            <div style="color:white; font-size:15px; font-weight:500; line-height:1.1;">Kali AI<br><span style='font-size:9px; color:#a78bfa; letter-spacing:1px; font-weight:400;'>STUDIO v2</span></div>
+            <div style="color:#0f172a; font-size:15px; font-weight:500; line-height:1.1;">Kali AI<br><span style='font-size:9px; color:#a855f7; letter-spacing:1px; font-weight:400;'>STUDIO v2</span></div>
         </div>
     """, unsafe_allow_html=True)
     
@@ -445,11 +374,81 @@ with st.sidebar:
         "gemini-2.0-flash (Premium Grounding)"
     ])
     
-    # Dynamic Key Synchronization
-    if st.button("🔄 Sync Neural Keys", use_container_width=True):
-        load_dotenv(override=True)
-        st.rerun()
+    st.divider()
+    with st.expander("🔌 MCP Integrations"):
+        st.markdown("### Playwright MCP")
+        if st.button("Launch Playwright Server"):
+            with st.spinner("Starting Playwright MCP..."):
+                try:
+                    tools = run_async(get_playwright_tools())
+                    st.success(f"Connected! Found {len(tools)} tools.")
+                    for t in tools:
+                        st.markdown(f"**🛠️ {t.name}**")
+                        st.caption(t.description)
+                except Exception as e:
+                    st.error(f"Failed to start Playwright: {str(e)}")
+                    st.info("Make sure you have Node.js installed and 'npx' is available in your path.")
         
+        st.divider()
+        st.markdown("### Chrome DevTools MCP")
+        if st.button("Launch Chrome DevTools Server"):
+            with st.spinner("Starting Chrome DevTools MCP..."):
+                try:
+                    tools = run_async(get_chrome_tools())
+                    st.success(f"Connected! Found {len(tools)} tools.")
+                    for t in tools:
+                        st.markdown(f"**🛠️ {t.name}**")
+                        st.caption(t.description)
+                except Exception as e:
+                    st.error(f"Failed to start Chrome DevTools: {str(e)}")
+                    st.info("Make sure you have Chrome running with remote debugging enabled at port 9222.")
+        
+        st.divider()
+        st.markdown("### Apify MCP")
+        
+        # Try to read token from .env file
+        apify_token_from_env = ""
+        try:
+            with open(".env", "r") as f:
+                for line in f:
+                    if line.startswith("APIFY_TOKEN="):
+                        apify_token_from_env = line.split("=")[1].strip()
+        except:
+            pass
+            
+        # Hidden from frontend: Uses the token from .env directly
+        apify_token = apify_token_from_env
+        
+        if st.button("Launch Apify Server"):
+            if not apify_token:
+                st.warning("Apify Token not found in .env file. Please add it to use Apify.")
+            else:
+                with st.spinner("Starting Apify MCP..."):
+                    try:
+                        # Create params with the provided token
+                        current_apify_params = StdioServerParameters(
+                            command="npx",
+                            args=["-y", "@apify/actors-mcp-server", "--actors", "apify/rag-web-browser"],
+                            env={"APIFY_TOKEN": apify_token}
+                        )
+                        
+                        async def get_apify_tools_with_token():
+                            async with stdio_client(current_apify_params) as (read, write):
+                                async with ClientSession(read, write) as session:
+                                    await session.initialize()
+                                    tools = await session.list_tools()
+                                    return tools.tools
+                        
+                        tools = run_async(get_apify_tools_with_token())
+                        st.success(f"Connected! Found {len(tools)} tools.")
+                        for t in tools:
+                            st.markdown(f"**🛠️ {t.name}**")
+                            st.caption(t.description)
+                    except Exception as e:
+                        st.error(f"Failed to start Apify: {str(e)}")
+                        st.info("Make sure your API token is correct and you have an active internet connection.")
+    
+
     # --- HYPER-SECURE KEY MANAGEMENT ---
     # Hide inputs entirely if keys exist in .env
     groq_env = os.getenv("GROQ_API_KEY", "")
@@ -462,45 +461,26 @@ with st.sidebar:
     else:
         auth_key = groq_env
         gemini_key = gemini_env
-        st.markdown("<div style='font-size:10px; color:#10b981; margin-top:10px; font-weight:600; letter-spacing:0.5px;'>🛡️ NEURAL LINK ENCRYPTED (.env)</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:13px; color:#10b981; background:rgba(16, 185, 129, 0.1); padding: 6px 12px; border-radius: 20px; display: inline-block; font-weight:600; letter-spacing:0.5px; margin-top:10px;'>🛡️ NEURAL LINK ENCRYPTED (.env)</div>", unsafe_allow_html=True)
     
     if gemini_key:
         genai.configure(api_key=gemini_key)
     
     st.markdown(f"""
-        <div style='padding: 20px 0; border-top: 1px solid var(--border-subtle); margin-top: 20px; display:flex; align-items:center; gap:12px;'>
-            <div style='width:34px; height:34px; border-radius:10px; background:#1e1b4b; border:1px solid rgba(139, 92, 246, 0.3); color:#a78bfa; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:14px; box-shadow: 0 0 10px rgba(139, 92, 246, 0.2);'>✦</div>
-            <div><b style='color:#fff; font-size:13px;'>Executive Control</b><br><span style='color:#4ade80; font-size:10px;'>● Neural Link Optimal</span> <span style='color:#60a5fa; font-size:10px; margin-left:10px;'>🌐 Web Online</span></div>
+        <div style='padding: 20px; background: rgba(248, 250, 252, 0.8); border: 1px solid var(--border-subtle); border-radius: 16px; margin-top: 20px; display:flex; align-items:center; gap:16px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);'>
+            <div style='width:48px; height:48px; border-radius:12px; background:linear-gradient(135deg, #a855f7, #ec4899); color:white; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:20px; box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);'>✦</div>
+            <div>
+                <div style='color:#0f172a; font-size:16px; font-weight:700;'>Executive Control</div>
+                <div style='display:flex; gap:12px; margin-top:4px;'>
+                    <span style='color:#22c55e; font-size:12px; font-weight:500; display:flex; align-items:center; gap:4px;'><span style='width:6px; height:6px; background:#22c55e; border-radius:50%; display:inline-block;'></span>Neural Link Optimal</span>
+                    <span style='color:#3b82f6; font-size:12px; font-weight:500; display:flex; align-items:center; gap:4px;'>🌐 Web Online</span>
+                </div>
+            </div>
         </div>
     """, unsafe_allow_html=True)
 
 # --- MAIN ENGINE INTERFACE CANVAS ---
-if not st.session_state.messages:
-    # Action Navigation
-    cols = st.columns([1, 4, 3])
-    with cols[0]:
-        st.markdown("<div style='background:#141414; border:1px solid #222; border-radius:8px; padding:6px 12px; font-size:12px; color:#888;'>Studio v2.0</div>", unsafe_allow_html=True)
-    with cols[2]:
-        st.markdown("<div style='text-align:right; font-size:12px; color:#666;'>Engine Status: <span style='color:#6c63ff;'>Optimal</span></div>", unsafe_allow_html=True)
-
-    st.markdown("""
-        <div class="hero-v2">
-            <div class="bg-glow-v2"></div>
-            <div class="logo-mark-v2" style="width:80px; height:80px; font-size:42px; margin-bottom:25px; z-index:1; border-radius:18px;">✦</div>
-            <h1 style="font-size:54px; font-weight:800; color:#f8fafc; margin-top:0; z-index:1; text-align:center; line-height:1.1;">
-                Meet <span style="background: linear-gradient(135deg, #8b5cf6, #d946ef); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Kali AI</span>
-            </h1>
-            <p style="color:#64748b; font-size:14px; text-transform:uppercase; letter-spacing:3px; margin-top:5px; z-index:1; font-weight:600;">
-                Advanced Multi-Modal Search Engine
-            </p>
-        </div>
-        <div style="text-align:center; position:relative; z-index:1; margin-bottom:50px;">
-            <div class="chip-v2">✨ Creative Synthesis</div>
-            <div class="chip-v2">🔬 Surgical Extraction</div>
-            <div class="chip-v2">🌐 Real-time Intelligence</div>
-            <div class="chip-v2">🎙️ Voice Command</div>
-        </div>
-    """, unsafe_allow_html=True)
+# --- END UI SYNTHESIS (Legacy block removed) ---
 
 # --- END UI SYNTHESIS ---
 
@@ -858,6 +838,50 @@ def fetch_knowledge(query, idx, chunks):
 # --- LEGACY HEADER PURGED (v2.0 Logic Engaged) ---
 st.markdown("<br>", unsafe_allow_html=True)
 
+# ── Home Screen v2.0 (Reference Target) ──────────
+if not st.session_state.messages:
+    st.markdown("""
+        <div style='text-align: center; padding: 40px 0;'>
+            <div style='display: inline-block; width: 80px; height: 80px; background: linear-gradient(135deg, #a855f7, #ec4899); border-radius: 20px; color: white; font-size: 40px; line-height: 80px; margin-bottom: 20px;'>✦</div>
+            <h1 style='font-size: 48px; font-weight: 700; color: #0f172a; margin-bottom: 10px;'>Hello, I'm <span style='background: linear-gradient(135deg, #a855f7, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>Kali AI</span></h1>
+            <p style='font-size: 18px; color: #64748b; margin-bottom: 40px;'>Advanced Multi-Modal Search Engine</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    cols = st.columns(4)
+    with cols[0]:
+        st.markdown("""
+            <div style='background: white; padding: 25px; border-radius: 16px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); height: 100%;'>
+                <div style='width: 48px; height: 48px; background: rgba(168, 85, 247, 0.1); color: #a855f7; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 20px;'>🪄</div>
+                <h3 style='font-size: 16px; font-weight: 600; color: #0f172a; margin-bottom: 8px;'>Creative Synthesis</h3>
+                <p style='font-size: 13px; color: #64748b; line-height: 1.5;'>Generate original ideas and content</p>
+            </div>
+        """, unsafe_allow_html=True)
+    with cols[1]:
+        st.markdown("""
+            <div style='background: white; padding: 25px; border-radius: 16px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); height: 100%;'>
+                <div style='width: 48px; height: 48px; background: rgba(59, 130, 246, 0.1); color: #3b82f6; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 20px;'>📝</div>
+                <h3 style='font-size: 16px; font-weight: 600; color: #0f172a; margin-bottom: 8px;'>Surgical Extraction</h3>
+                <p style='font-size: 13px; color: #64748b; line-height: 1.5;'>Extract precise insights with accuracy</p>
+            </div>
+        """, unsafe_allow_html=True)
+    with cols[2]:
+        st.markdown("""
+            <div style='background: white; padding: 25px; border-radius: 16px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); height: 100%;'>
+                <div style='width: 48px; height: 48px; background: rgba(34, 197, 94, 0.1); color: #22c55e; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 20px;'>📈</div>
+                <h3 style='font-size: 16px; font-weight: 600; color: #0f172a; margin-bottom: 8px;'>Real-time Intelligence</h3>
+                <p style='font-size: 13px; color: #64748b; line-height: 1.5;'>Get live data and actionable insights</p>
+            </div>
+        """, unsafe_allow_html=True)
+    with cols[3]:
+        st.markdown("""
+            <div style='background: white; padding: 25px; border-radius: 16px; border: 1px solid rgba(0,0,0,0.05); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); height: 100%;'>
+                <div style='width: 48px; height: 48px; background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 20px;'>🎙️</div>
+                <h3 style='font-size: 16px; font-weight: 600; color: #0f172a; margin-bottom: 8px;'>Voice Command</h3>
+                <p style='font-size: 13px; color: #64748b; line-height: 1.5;'>Speak naturally, get instant answers</p>
+            </div>
+        """, unsafe_allow_html=True)
+
 # ── Neural Chat Core ────────────────────────────
 for i, msg in enumerate(st.session_state.messages):
     role = "user" if msg["role"] == "user" else "assistant"
@@ -867,10 +891,9 @@ for i, msg in enumerate(st.session_state.messages):
         if role == "user":
             col1, col2, _ = st.columns([0.05, 0.05, 0.9])
             with col1:
-                if st.button("📋", key=f"cp_{i}", help="Copy message"):
-                    js_text = msg["content"].replace('"', '\\"').replace("\n", "\\n")
-                    st.write(f'<script>navigator.clipboard.writeText("{js_text}");</script>', unsafe_allow_html=True)
-                    st.toast("Copied to clipboard!", icon="✅")
+                import json
+                js_text = json.dumps(msg["content"])
+                st.markdown(f'<div><button onclick="copyText(this); const b = this; b.innerText = \'✅\'; setTimeout(() => b.innerText = \'📋\', 1000);" style="background:none; border:none; cursor:pointer; font-size:16px;" title="Copy message">📋</button></div>', unsafe_allow_html=True)
             with col2:
                 if st.button("✏️", key=f"ed_{i}", help="Edit & Resend"):
                     st.session_state.edit_index = i
@@ -900,19 +923,6 @@ st.markdown("<br><br>", unsafe_allow_html=True)
 footer_cols = st.columns([1, 15], gap="small")
 
 with st.sidebar:
-    with st.expander("🛰️ SYSTEM LINK", expanded=False):
-        remote_path = st.text_input("Local File Path (Global Access)", placeholder="C:\\Path\\to\\document.docx")
-        if remote_path and os.path.exists(remote_path):
-            if st.button("🔌 CONNECT SYSTEM FILE"):
-                try:
-                    with open(remote_path, 'rb') as rf:
-                        file_bytes = rf.read()
-                        st.session_state.template_bytes = file_bytes
-                        st.session_state.uploaded_file_name = os.path.basename(remote_path)
-                        st.success(f"Linked: {st.session_state.uploaded_file_name}")
-                        st.rerun()
-                except Exception as e:
-                    st.error(f"Link Error: {str(e)}")
 
     st.divider()
     st.markdown("### 💼 SESSION ASSETS")
@@ -949,7 +959,6 @@ with footer_cols[0]:
                     st.toast(f"Knowledge Matrix Synced ({len(chunks)} nodes)")
         
         st.markdown("---")
-        st.markdown("<div class='voice-card'>", unsafe_allow_html=True)
         st.markdown("### 🎙️ Voice Intelligence")
         audio = mic_recorder(
             start_prompt="⏺️ Start Recording",
@@ -976,17 +985,18 @@ with footer_cols[0]:
                         st.rerun()
                     except Exception as e:
                         st.error(f"Voice Error: {str(e)}")
-        st.markdown("</div>", unsafe_allow_html=True)
 
 with footer_cols[1]:
     prompt = st.chat_input("Ask anything...")
 
 # ── Active Intelligence Processing ──────────
-active_prompt = prompt if prompt else st.session_state.get("voice_prompt")
+active_prompt = prompt or st.session_state.get("voice_prompt") or st.session_state.get("active_prompt")
 
 if active_prompt:
     if st.session_state.get("voice_prompt"):
         st.session_state.voice_prompt = None # Clear the buffer
+    if st.session_state.get("active_prompt"):
+        st.session_state.active_prompt = None # Clear the buffer
 
     st.session_state.messages.append({"role": "user", "content": active_prompt})
     save_chat_to_disk(st.session_state.chat_id, st.session_state.messages)
@@ -1016,8 +1026,9 @@ if active_prompt:
                 with st.spinner("🌌 Consulting Google Knowledge Matrix..."):
                     try:
                         gemini_model = genai.GenerativeModel(
-                            model_name="gemini-flash-latest",
-                            tools=[{"google_search_retrieval": {}}]
+                            model_name="gemini-2.0-flash",
+                            tools=[{"google_search_retrieval": {}}],
+                            system_instruction="You are a precise fact-checking assistant. When answering based on search results, ensure all numbers, scores, and names are accurate. Do not guess or interpolate if the source is not clear."
                         )
                         response = gemini_model.generate_content(active_prompt)
                         full_response = response.text

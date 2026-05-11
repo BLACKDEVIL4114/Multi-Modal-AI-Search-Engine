@@ -21,7 +21,7 @@ def ask(question: str):
         print(f"\nError: {str(e)}")
 
 if __name__ == "__main__":
-    print("🚀 Gemini Search Bot Initialized (Type 'exit' to quit)")
+    print("Gemini Search Bot Initialized (Type 'exit' to quit)")
     while True:
         q = input("\nAsk anything: ")
         if q.lower() in ["exit", "quit", "bye"]:
